@@ -6,7 +6,10 @@
   "functions": {
     "api/index.ts": {
       "maxDuration": 60,
-      "includeFiles": "supabase/prod-ca-2021.crt"
+      "includeFiles": [
+        "server/**",
+        "supabase/prod-ca-2021.crt"
+      ]
     }
   },
   "routes": [

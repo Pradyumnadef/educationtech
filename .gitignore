@@ -7,3 +7,5 @@ dist/
 data/
 *.log
 test-results/
+
+.vercel
