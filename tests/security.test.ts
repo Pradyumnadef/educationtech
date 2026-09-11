@@ -399,6 +399,7 @@ test("timed assignments enforce targeting, private document uploads, and submiss
     {
       title: "Secure worksheet",
       description: "Complete the attached practice questions.",
+      quizUrl: "https://forms.gle/exampleQuiz",
       dueAt: Date.now() + 3600000,
       timeLimitMinutes: 30,
       status: "published",
@@ -410,6 +411,21 @@ test("timed assignments enforce targeting, private document uploads, and submiss
   );
   assert.equal(created.status, 200, JSON.stringify(created.data));
   const assignmentId = created.data.id;
+  assert.equal(created.data.quiz_url, "https://forms.gle/exampleQuiz");
+  const unsafeLink = await request(
+    "/admin/coursework",
+    "POST",
+    {
+      title: "Unsafe link",
+      description: "This must be rejected.",
+      quizUrl: "javascript:alert(1)",
+      dueAt: Date.now() + 3600000,
+      targetType: "student",
+      targetIds: ["user-1"],
+    },
+    teacher,
+  );
+  assert.equal(unsafeLink.status, 400);
   const learning = await request("/learning", "GET", undefined, student);
   assert.ok(learning.data.assignments.some((a: any) => a.id === assignmentId));
   assert.equal((await request(`/assignments/${assignmentId}/start`, "POST")).status, 401);

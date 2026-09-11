@@ -1415,6 +1415,7 @@ function Coursework({ data, refresh }: any) {
   const emptyForm = () => ({
     title: "",
     description: "",
+    quizUrl: "",
     dueAt: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 16),
     timeLimitMinutes: 0,
     status: "published",
@@ -1523,6 +1524,7 @@ function Coursework({ data, refresh }: any) {
               <Field label="Deadline"><input required type="datetime-local" min={new Date().toISOString().slice(0,16)} value={form.dueAt} onChange={(e) => setForm({ ...form, dueAt: e.target.value })} /></Field>
             </div>
             <Field label="Instructions"><textarea required rows={5} maxLength={10000} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Explain what students need to complete and submit…" /></Field>
+            <Field label="Google Quiz link (optional)"><input type="url" maxLength={2048} value={form.quizUrl} onChange={(e) => setForm({ ...form, quizUrl: e.target.value })} placeholder="https://forms.gle/…" /><small>Paste the share link from Google Forms. Students will open it in a new tab.</small></Field>
             <div className="grid two">
               <Field label="Timer after student starts (minutes)"><input type="number" min={0} max={1440} value={form.timeLimitMinutes} onChange={(e) => setForm({ ...form, timeLimitMinutes: Number(e.target.value) })} /><small>Use 0 for deadline only. The timer cannot be restarted.</small></Field>
               <Field label="Visibility"><select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}><option value="published">Publish now</option><option value="draft">Save as draft</option></select></Field>
@@ -1551,7 +1553,7 @@ function Coursework({ data, refresh }: any) {
 function CourseworkDetails({ assignment, data, refresh, onClose }: any) {
   const [feedback, setFeedback] = useState<Record<string,string>>({}), [busy, setBusy] = useState(""), toast = useToast();
   return <Modal title={assignment.title} wide onClose={onClose}>
-    <div className="assignment-detail-head"><div><span className={`status ${assignment.status}`}>{assignment.status}</span><p>{assignment.description}</p></div><div><b>Deadline</b><span>{new Date(assignment.due_at).toLocaleString()}</span><small>{assignment.time_limit_minutes ? `${assignment.time_limit_minutes} minutes after starting` : "Deadline only"}</small></div></div>
+    <div className="assignment-detail-head"><div><span className={`status ${assignment.status}`}>{assignment.status}</span><p>{assignment.description}</p>{assignment.quiz_url && <a className="button secondary small quiz-link" href={assignment.quiz_url} target="_blank" rel="noopener noreferrer">Open Google Quiz <ArrowUpRight size={14}/></a>}</div><div><b>Deadline</b><span>{new Date(assignment.due_at).toLocaleString()}</span><small>{assignment.time_limit_minutes ? `${assignment.time_limit_minutes} minutes after starting` : "Deadline only"}</small></div></div>
     <div className="section-heading compact"><h2>Teacher resources</h2><span className="muted">{assignment.resources.length} files</span></div>
     <div className="file-list">{assignment.resources.map((file:any) => <a className="file-row" href={`/api/storage/assignment/${assignment.id}/resource/${file.upload_id}`} key={file.upload_id}><FileText size={18}/><span><b>{file.filename}</b><small>{Math.ceil(file.size/1024)} KB</small></span><Download size={16}/></a>)}{!assignment.resources.length && <p className="muted">No resource files were attached.</p>}</div>
     <div className="section-heading compact"><h2>Student submissions</h2><span className="muted">{assignment.submissions.length} started</span></div>

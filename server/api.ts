@@ -695,6 +695,10 @@ api.patch("/admin/assignments/:id", async (req, res) => {
 const courseworkSchema = z.object({
   title: text,
   description: z.string().trim().min(1).max(10000),
+  quizUrl: z.string().trim().max(2048).refine((value) => {
+    if (!value) return true;
+    try { return new URL(value).protocol === "https:"; } catch { return false; }
+  }, "Enter a valid secure HTTPS quiz link.").default(""),
   dueAt: z.number().int().min(1),
   timeLimitMinutes: z.number().int().min(0).max(1440).default(0),
   status: z.enum(["draft", "published"]).default("published"),
@@ -730,6 +734,7 @@ api.post("/admin/coursework", async (req, res) => {
     teacher_id: uid(req),
     title: b.title,
     description: b.description,
+    quiz_url: b.quizUrl,
     due_at: b.dueAt,
     time_limit_minutes: b.timeLimitMinutes,
     status: b.status,

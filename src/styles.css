@@ -5037,6 +5037,7 @@ th,
 .submission-box { display:grid; gap:16px; margin-top:20px; }
 .feedback-card { margin-top:20px; padding:18px; border-radius:16px; background:#fff7dd; }
 .feedback-card p { margin-top:8px; white-space:pre-wrap; }
+.quiz-link { margin-top:14px; width:max-content; }
 @media (max-width: 800px) {
   .coursework-grid { grid-template-columns:1fr; }
   .coursework-meta { grid-template-columns:1fr; }
