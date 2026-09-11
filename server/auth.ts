@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { randomInt, createHmac } from "node:crypto";
 import { z } from "zod";
-import { sendEmailOtp, verifyEmailOtp } from './supabase-auth.ts';
+import { sendEmailOtp, verifyEmailOtp } from "./supabase-auth.ts";
 import { one, insert, run, id, now, demo } from "./db.ts";
 import {
   auth,
+  audit,
   createSession,
   passwordCheck,
   passwordHash,
@@ -24,6 +25,9 @@ const otpHash = (challenge: string, code: string) =>
   createHmac("sha256", process.env.SESSION_SECRET!)
     .update(`${challenge}:${code}`)
     .digest("hex");
+const otpCodeSchema = z
+  .string()
+  .regex(/^\d{6,8}$/, "Enter the verification code from your email.");
 async function twilio(action: string, body: Record<string, string>) {
   const sid = process.env.TWILIO_VERIFY_SERVICE_SID;
   if (!sid)
@@ -90,8 +94,12 @@ authRoutes.post("/otp/send", async (req, res) => {
     });
   const challenge = id(),
     code = String(randomInt(100000, 1000000));
-  const provider = demo ? 'local' : identifier.includes('@') && process.env.EMAIL_OTP_PROVIDER === 'supabase' ? 'supabase' : 'twilio';
-  if (provider === 'supabase') await sendEmailOtp(identifier);
+  const provider = demo
+    ? "local"
+    : identifier.includes("@") && process.env.EMAIL_OTP_PROVIDER === "supabase"
+      ? "supabase"
+      : "twilio";
+  if (provider === "supabase") await sendEmailOtp(identifier);
   else if (!demo)
     await twilio("Verifications", {
       To: identifier,
@@ -108,14 +116,18 @@ authRoutes.post("/otp/send", async (req, res) => {
     expires_at: now() + 300000,
     created_at: now(),
   });
-  await insert('otp_bindings', { id: challenge, provider, user_id: ['email','phone'].includes(purpose) ? (req as any).user.id : null });
+  await insert("otp_bindings", {
+    id: challenge,
+    provider,
+    user_id: ["email", "phone"].includes(purpose) ? (req as any).user.id : null,
+  });
   res.json({ challenge, expiresIn: 300, ...(demo ? { demoCode: code } : {}) });
 });
 authRoutes.post("/otp/verify", async (req, res) => {
   const { challenge, code } = z
     .object({
       challenge: z.uuid(),
-      code: z.string().regex(/^\d{6,8}$/, "Enter the verification code from your email."),
+      code: otpCodeSchema,
     })
     .parse(req.body);
   await throttle(`verify:${req.ip}`, 30, 900000);
@@ -128,14 +140,28 @@ authRoutes.post("/otp/verify", async (req, res) => {
       error:
         "This code has expired or reached its attempt limit. Request a new code.",
     });
-  const binding = await one('SELECT * FROM otp_bindings WHERE id=?', [challenge]);
-  if (['email','phone'].includes(otp.purpose) && (!binding?.user_id || binding.user_id !== (req as any).user?.id))
-    return res.status(403).json({ error: 'This verification belongs to another session.' });
-  const provider = binding?.provider || (demo ? 'local' : 'twilio');
-  const valid = provider === 'supabase' ? await verifyEmailOtp(otp.identifier, code) : provider === 'local' && demo
-    ? otp.code_hash === otpHash(challenge, code)
-    : (await twilio("VerificationCheck", { To: otp.identifier, Code: code }))
-        .status === "approved";
+  const binding = await one("SELECT * FROM otp_bindings WHERE id=?", [
+    challenge,
+  ]);
+  if (
+    ["email", "phone"].includes(otp.purpose) &&
+    (!binding?.user_id || binding.user_id !== (req as any).user?.id)
+  )
+    return res
+      .status(403)
+      .json({ error: "This verification belongs to another session." });
+  const provider = binding?.provider || (demo ? "local" : "twilio");
+  const valid =
+    provider === "supabase"
+      ? await verifyEmailOtp(otp.identifier, code)
+      : provider === "local" && demo
+        ? otp.code_hash === otpHash(challenge, code)
+        : (
+            await twilio("VerificationCheck", {
+              To: otp.identifier,
+              Code: code,
+            })
+          ).status === "approved";
   if (!valid)
     return res
       .status(400)
@@ -221,6 +247,108 @@ authRoutes.post("/admin", async (req, res) => {
   if (!user || !valid || user.status !== "active")
     return res.status(401).json({ error: "Email or password is incorrect." });
   res.json(await createSession(res, user));
+});
+authRoutes.post("/password/forgot", async (req, res) => {
+  const { email } = z
+    .object({ email: z.email().trim().toLowerCase() })
+    .parse(req.body);
+  await throttle(`password-reset-ip:${req.ip}`, 10, 900000);
+  await throttle(`password-reset:${email}`, 5, 900000);
+  const challenge = id();
+  const user = await one(
+    "SELECT * FROM users WHERE email=? AND role='admin' AND status='active'",
+    [email],
+  );
+  // Return the same shape for unknown addresses so this endpoint cannot be
+  // used to discover teacher accounts.
+  if (!user) return res.json({ challenge, expiresIn: 300 });
+  const recent = await one(
+    "SELECT created_at FROM otps WHERE identifier=? AND purpose='password' ORDER BY created_at DESC LIMIT 1",
+    [email],
+  );
+  if (recent && now() - Number(recent.created_at) < 60000)
+    return res.status(429).json({
+      error: "Please wait 60 seconds before requesting another code.",
+    });
+  const code = String(randomInt(100000, 1000000));
+  const provider = demo ? "local" : "supabase";
+  if (provider === "supabase") await sendEmailOtp(email);
+  await run(
+    "UPDATE otps SET consumed=1 WHERE identifier=? AND purpose='password'",
+    [email],
+  );
+  await insert("otps", {
+    id: challenge,
+    identifier: email,
+    code_hash: otpHash(challenge, code),
+    purpose: "password",
+    attempts: 0,
+    consumed: 0,
+    expires_at: now() + 300000,
+    created_at: now(),
+  });
+  await insert("otp_bindings", {
+    id: challenge,
+    provider,
+    user_id: user.id,
+  });
+  res.json({ challenge, expiresIn: 300, ...(demo ? { demoCode: code } : {}) });
+});
+authRoutes.post("/password/reset", async (req, res) => {
+  const { challenge, code, password } = z
+    .object({
+      challenge: z.uuid(),
+      code: otpCodeSchema,
+      password: z.string().min(12).max(200),
+    })
+    .parse(req.body);
+  await throttle(`password-reset-verify:${req.ip}`, 20, 900000);
+  const otp = await one(
+    "UPDATE otps SET attempts=attempts+1 WHERE id=? AND purpose='password' AND consumed=0 AND expires_at>? AND attempts<5 RETURNING *",
+    [challenge, now()],
+  );
+  if (!otp)
+    return res.status(400).json({
+      error:
+        "This code has expired or reached its attempt limit. Request a new code.",
+    });
+  const binding = await one("SELECT * FROM otp_bindings WHERE id=?", [
+    challenge,
+  ]);
+  const user = binding?.user_id
+    ? await one(
+        "SELECT * FROM users WHERE id=? AND role='admin' AND status='active'",
+        [binding.user_id],
+      )
+    : null;
+  if (!user)
+    return res
+      .status(400)
+      .json({ error: "This reset request is no longer valid." });
+  const valid =
+    binding.provider === "supabase"
+      ? await verifyEmailOtp(otp.identifier, code)
+      : binding.provider === "local" && demo
+        ? otp.code_hash === otpHash(challenge, code)
+        : false;
+  if (!valid)
+    return res
+      .status(400)
+      .json({ error: "That code is not correct. Please try again." });
+  const claimed = await one(
+    "UPDATE otps SET consumed=1 WHERE id=? AND consumed=0 RETURNING id",
+    [challenge],
+  );
+  if (!claimed)
+    return res.status(400).json({ error: "This code has already been used." });
+  await run("UPDATE users SET password_hash=?,updated_at=? WHERE id=?", [
+    passwordHash(password),
+    now(),
+    user.id,
+  ]);
+  await run("DELETE FROM sessions WHERE user_id=?", [user.id]);
+  await audit(user.id, "password.reset", user.id);
+  res.json({ ok: true });
 });
 authRoutes.post("/logout", auth, async (req, res) => {
   await run("DELETE FROM sessions WHERE id=?", [(req as any).session.id]);

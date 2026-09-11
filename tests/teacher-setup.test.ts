@@ -317,3 +317,58 @@ test("teacher deactivation invalidates sessions, reactivation restores sign-in",
     200,
   );
 });
+test("teacher can securely reset a forgotten password by email OTP", async () => {
+  const unknown = await request("/auth/password/forgot", "POST", {
+    email: "unknown@example.test",
+  });
+  assert.equal(unknown.status, 200);
+  assert.equal(unknown.data.demoCode, undefined);
+
+  const sent = await request("/auth/password/forgot", "POST", {
+    email: "teacher@example.test",
+  });
+  assert.equal(sent.status, 200);
+  assert.match(sent.data.demoCode, /^\d{6}$/);
+  assert.equal(
+    (
+      await request("/auth/password/reset", "POST", {
+        challenge: sent.data.challenge,
+        code: "000000",
+        password: "A-new-teacher-password-2026!",
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request("/auth/password/reset", "POST", {
+        challenge: sent.data.challenge,
+        code: sent.data.demoCode,
+        password: "A-new-teacher-password-2026!",
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (await request("/admin/overview", "GET", undefined, teacher)).status,
+    401,
+  );
+  assert.equal(
+    (
+      await request("/auth/admin", "POST", {
+        email: "teacher@example.test",
+        password,
+      })
+    ).status,
+    401,
+  );
+  assert.equal(
+    (
+      await request("/auth/admin", "POST", {
+        email: "teacher@example.test",
+        password: "A-new-teacher-password-2026!",
+      })
+    ).status,
+    200,
+  );
+});

@@ -13,7 +13,8 @@ import { Logo, Field, Button, useAuth, useToast, post, useData } from "../lib";
 export default function Auth() {
   const { mode } = useParams();
   const isAdmin = mode === "admin",
-    signup = mode === "signup";
+    signup = mode === "signup",
+    forgot = mode === "forgot";
   const { setUser, refresh } = useAuth();
   const { data: setup } = useData<any>("/auth/setup");
   const { data: options } = useData<any>("/auth/options");
@@ -21,6 +22,7 @@ export default function Auth() {
     toast = useToast();
   const [identifier, setIdentifier] = useState(""),
     [password, setPassword] = useState(""),
+    [confirmPassword, setConfirmPassword] = useState(""),
     [show, setShow] = useState(false),
     [challenge, setChallenge] = useState(""),
     [code, setCode] = useState(""),
@@ -31,8 +33,18 @@ export default function Auth() {
   useEffect(() => {
     setChallenge("");
     setCode("");
+    setPassword("");
+    setConfirmPassword("");
     const reason = new URLSearchParams(window.location.search).get("authError");
-    setError(reason === "linkGoogle" ? "Sign in with your teacher password, then connect Google from your profile." : reason === "signup" ? "Create your student account with Google to get started." : reason ? "Google sign-in could not be completed. Please try again." : "");
+    setError(
+      reason === "linkGoogle"
+        ? "Sign in with your teacher password, then connect Google from your profile."
+        : reason === "signup"
+          ? "Create your student account with Google to get started."
+          : reason
+            ? "Google sign-in could not be completed. Please try again."
+            : "",
+    );
   }, [mode]);
   useEffect(() => {
     if (!cooldown) return;
@@ -43,10 +55,14 @@ export default function Auth() {
     setBusy(true);
     setError("");
     try {
-      const r = await post("/auth/otp/send", {
-        identifier,
-        purpose: signup ? "signup" : "login",
-      });
+      const r = await post(
+        forgot ? "/auth/password/forgot" : "/auth/otp/send",
+        {
+          ...(forgot
+            ? { email: identifier }
+            : { identifier, purpose: signup ? "signup" : "login" }),
+        },
+      );
       setChallenge(r.challenge);
       setDemoCode(r.demoCode || "");
       setCooldown(60);
@@ -58,10 +74,18 @@ export default function Auth() {
   }
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!isAdmin && !challenge) return send();
+    if ((!isAdmin || forgot) && !challenge) return send();
     setBusy(true);
     setError("");
     try {
+      if (forgot) {
+        if (password !== confirmPassword)
+          throw new Error("The new passwords do not match.");
+        await post("/auth/password/reset", { challenge, code, password });
+        toast("Your password has been reset. You can sign in now.");
+        navigate("/auth/admin");
+        return;
+      }
       const r = isAdmin
         ? await post("/auth/admin", { email: identifier, password })
         : await post("/auth/otp/verify", { challenge, code });
@@ -111,84 +135,129 @@ export default function Auth() {
         </Link>
         <div className="auth-form">
           <span className="auth-icon">
-            {isAdmin ? <ShieldCheck /> : challenge ? <Mail /> : <span>✦</span>}
+            {isAdmin || forgot ? (
+              <ShieldCheck />
+            ) : challenge ? (
+              <Mail />
+            ) : (
+              <span>✦</span>
+            )}
           </span>
           <span className="eyebrow">
-            {isAdmin
-              ? "TEACHER WORKSPACE"
-              : challenge
-                ? "A QUICK HELLO"
-                : "MAKE ROOM FOR POSSIBILITY"}
+            {forgot
+              ? "ACCOUNT RECOVERY"
+              : isAdmin
+                ? "TEACHER WORKSPACE"
+                : challenge
+                  ? "A QUICK HELLO"
+                  : "MAKE ROOM FOR POSSIBILITY"}
           </span>
           <h1>
-            {isAdmin
-              ? "Welcome back, teacher."
-              : challenge
-                ? "Check your inbox."
-                : signup
-                  ? "Your next chapter starts here."
-                  : "Good to see you again."}
+            {forgot
+              ? challenge
+                ? "Choose a new password."
+                : "Reset your teacher password."
+              : isAdmin
+                ? "Welcome back, teacher."
+                : challenge
+                  ? "Check your inbox."
+                  : signup
+                    ? "Your next chapter starts here."
+                    : "Good to see you again."}
           </h1>
           <p>
-            {isAdmin
-              ? "Sign in to guide your students toward their next lightbulb moment."
-              : challenge
-                ? `We sent a verification code to ${identifier}. It’s valid for five minutes.`
-                : signup
-                  ? "A few details, a fresh start. Let’s make this space yours."
-                  : "Pick up where your curiosity left off."}
+            {forgot
+              ? challenge
+                ? "Enter the verification code and create a secure new password."
+                : "We’ll send a verification code to your teacher email address."
+              : isAdmin
+                ? "Sign in to guide your students toward their next lightbulb moment."
+                : challenge
+                  ? `We sent a verification code to ${identifier}. It’s valid for five minutes.`
+                  : signup
+                    ? "A few details, a fresh start. Let’s make this space yours."
+                    : "Pick up where your curiosity left off."}
           </p>
-          {!challenge && <div className="google-signin">
-            <Button className="full" variant="secondary" busy={busy} onClick={async () => {
-              setBusy(true); setError("");
-              try { const r = await post("/auth/google/start", { action: signup ? "signup" : "login" }); window.location.assign(r.url); }
-              catch (e: any) { setError(e.message); setBusy(false); }
-            }}>Continue with Google</Button>
-            {options && !options.google && <small>Google sign-in is awaiting provider setup.</small>}
-            <p>or continue with {isAdmin ? "your password" : "a verification code"}</p>
-          </div>}
+          {!challenge && !forgot && (
+            <div className="google-signin">
+              <Button
+                className="full"
+                variant="secondary"
+                busy={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  setError("");
+                  try {
+                    const r = await post("/auth/google/start", {
+                      action: signup ? "signup" : "login",
+                    });
+                    window.location.assign(r.url);
+                  } catch (e: any) {
+                    setError(e.message);
+                    setBusy(false);
+                  }
+                }}
+              >
+                Continue with Google
+              </Button>
+              {options && !options.google && (
+                <small>Google sign-in is awaiting provider setup.</small>
+              )}
+              <p>
+                or continue with{" "}
+                {isAdmin ? "your password" : "a verification code"}
+              </p>
+            </div>
+          )}
           <form onSubmit={submit}>
             {!challenge ? (
               <>
                 <Field
                   label={
-                    isAdmin || (options?.emailOtp && !options?.sms) ? "Email address" : "Email address or mobile number"
+                    isAdmin || forgot || (options?.emailOtp && !options?.sms)
+                      ? "Email address"
+                      : "Email address or mobile number"
                   }
                   hint={
-                    isAdmin || (options?.emailOtp && !options?.sms)
+                    isAdmin || forgot || (options?.emailOtp && !options?.sms)
                       ? undefined
                       : "For mobile, include the country code (for example +91)."
                   }
                 >
                   <input
-                    autoComplete={isAdmin ? "username" : "email"}
+                    autoComplete={isAdmin || forgot ? "username" : "email"}
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
                     placeholder="you@example.com"
                     required
-                    type={isAdmin ? "email" : "text"}
+                    type={isAdmin || forgot ? "email" : "text"}
                     autoFocus
                   />
                 </Field>
                 {isAdmin && (
-                  <Field label="Password">
-                    <div className="password-input">
-                      <input
-                        type={show ? "text" : "password"}
-                        autoComplete="current-password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                      />
-                      <button
-                        type="button"
-                        aria-label={show ? "Hide password" : "Show password"}
-                        onClick={() => setShow(!show)}
-                      >
-                        {show ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </button>
+                  <>
+                    <Field label="Password">
+                      <div className="password-input">
+                        <input
+                          type={show ? "text" : "password"}
+                          autoComplete="current-password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          required
+                        />
+                        <button
+                          type="button"
+                          aria-label={show ? "Hide password" : "Show password"}
+                          onClick={() => setShow(!show)}
+                        >
+                          {show ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                    </Field>
+                    <div className="auth-resend">
+                      <Link to="/auth/forgot">Forgot password?</Link>
                     </div>
-                  </Field>
+                  </>
                 )}
               </>
             ) : (
@@ -207,6 +276,42 @@ export default function Auth() {
                     autoFocus
                   />
                 </Field>
+                {forgot && (
+                  <>
+                    <Field
+                      label="New password"
+                      hint="Use at least 12 characters."
+                    >
+                      <input
+                        type={show ? "text" : "password"}
+                        autoComplete="new-password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        minLength={12}
+                        maxLength={200}
+                        required
+                      />
+                    </Field>
+                    <Field label="Confirm new password">
+                      <input
+                        type={show ? "text" : "password"}
+                        autoComplete="new-password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        minLength={12}
+                        maxLength={200}
+                        required
+                      />
+                    </Field>
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => setShow(!show)}
+                    >
+                      {show ? "Hide passwords" : "Show passwords"}
+                    </button>
+                  </>
+                )}
                 {demoCode && (
                   <div className="demo-notice">
                     <b>Local development code: {demoCode}</b>
@@ -223,11 +328,15 @@ export default function Auth() {
               </p>
             )}
             <Button className="full" busy={busy} type="submit">
-              {isAdmin
-                ? "Enter your workspace"
-                : challenge
-                  ? "Verify & continue"
-                  : "Send verification code"}
+              {forgot
+                ? challenge
+                  ? "Reset password"
+                  : "Send reset code"
+                : isAdmin
+                  ? "Enter your workspace"
+                  : challenge
+                    ? "Verify & continue"
+                    : "Send verification code"}
               <ArrowRight size={18} />
             </Button>
           </form>
@@ -242,7 +351,9 @@ export default function Auth() {
             </div>
           ) : (
             <div className="auth-switch">
-              {isAdmin ? (
+              {forgot ? (
+                <Link to="/auth/admin">Back to teacher sign in</Link>
+              ) : isAdmin ? (
                 <Link to="/auth/login">Looking for student sign in?</Link>
               ) : signup ? (
                 <>
