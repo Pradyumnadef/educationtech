@@ -98,6 +98,10 @@ function signature(file: string, mime: string) {
   const b = Buffer.alloc(24);
   readSync(fd, b, 0, 24, 0);
   closeSync(fd);
+  return signatureBytes(b, mime);
+}
+function signatureBytes(bytes: Uint8Array, mime: string) {
+  const b = Buffer.from(bytes);
   if (mime === "video/mp4" || mime === "video/quicktime")
     return b.toString("ascii", 4, 8) === "ftyp";
   if (mime === "video/webm")
@@ -163,6 +167,21 @@ storageRoutes.post("/complete/:id", auth, admin, async (req, res) => {
         error: "Uploaded file does not match the declared size and format.",
       });
     await run("UPDATE uploads SET state='scanning' WHERE id=?", [row.id]);
+    if (process.env.INLINE_UPLOAD_VALIDATION === "true") {
+      const object = await s3.send(
+        new GetObjectCommand({
+          Bucket: bucket,
+          Key: row.storage_key,
+          Range: "bytes=0-23",
+        }),
+      );
+      const bytes = await (object.Body as any)?.transformToByteArray?.();
+      if (!bytes || !signatureBytes(bytes, row.mime) || !meta.ETag) {
+        await run("UPDATE uploads SET state='rejected' WHERE id=?", [row.id]);
+      } else {
+        await promoteUpload({ ...row, state: "scanning" }, meta.ETag);
+      }
+    }
   }
   const updated = await one("SELECT * FROM uploads WHERE id=?", [row.id]);
   res.json({ key: updated.storage_key, state: updated.state });
