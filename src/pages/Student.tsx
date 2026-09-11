@@ -1202,7 +1202,7 @@ export function Profile({ admin = false }: { admin?: boolean }) {
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   inputMode="numeric"
-                  pattern="[0-9]{6}"
+                  pattern="[0-9]{6,8}"
                   required
                   maxLength={8}
                 />
