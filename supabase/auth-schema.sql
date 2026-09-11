@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS oauth_flows (id TEXT PRIMARY KEY, browser_hash TEXT NOT NULL, state TEXT NOT NULL, action TEXT NOT NULL, user_id TEXT REFERENCES users(id) ON DELETE CASCADE, expires_at BIGINT NOT NULL);
+CREATE TABLE IF NOT EXISTS external_identities (id TEXT PRIMARY KEY, provider TEXT NOT NULL, subject TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, created_at BIGINT NOT NULL, UNIQUE(provider,subject));
+CREATE TABLE IF NOT EXISTS otp_bindings (id TEXT PRIMARY KEY REFERENCES otps(id) ON DELETE CASCADE, provider TEXT NOT NULL, user_id TEXT REFERENCES users(id) ON DELETE CASCADE);
+CREATE INDEX IF NOT EXISTS idx_oauth_expiry ON oauth_flows(expires_at);
+CREATE INDEX IF NOT EXISTS idx_identity_user ON external_identities(user_id);
+ALTER TABLE public.oauth_flows ENABLE ROW LEVEL SECURITY; REVOKE ALL ON public.oauth_flows FROM anon, authenticated; GRANT SELECT,INSERT,UPDATE,DELETE ON public.oauth_flows TO english_tech_server; CREATE POLICY server_access ON public.oauth_flows FOR ALL TO english_tech_server USING (true) WITH CHECK (true);
+ALTER TABLE public.external_identities ENABLE ROW LEVEL SECURITY; REVOKE ALL ON public.external_identities FROM anon, authenticated; GRANT SELECT,INSERT,UPDATE,DELETE ON public.external_identities TO english_tech_server; CREATE POLICY server_access ON public.external_identities FOR ALL TO english_tech_server USING (true) WITH CHECK (true);
+ALTER TABLE public.otp_bindings ENABLE ROW LEVEL SECURITY; REVOKE ALL ON public.otp_bindings FROM anon, authenticated; GRANT SELECT,INSERT,UPDATE,DELETE ON public.otp_bindings TO english_tech_server; CREATE POLICY server_access ON public.otp_bindings FOR ALL TO english_tech_server USING (true) WITH CHECK (true);

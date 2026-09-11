@@ -1,0 +1,1 @@
+[{"AllowedHeaders":["content-type"],"AllowedMethods":["PUT"],"AllowedOrigins":["https://learn.example.com"],"ExposeHeaders":["ETag"],"MaxAgeSeconds":3600}]
