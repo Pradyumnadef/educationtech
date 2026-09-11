@@ -699,16 +699,35 @@ export function CourseCard({
     </Link>
   );
 }
-export async function uploadFile(file: File, onProgress: (n: number) => void) {
+const fileMimes: Record<string, string> = {
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  txt: "text/plain",
+  csv: "text/csv",
+  vtt: "text/vtt",
+};
+export async function uploadFile(
+  file: File,
+  onProgress: (n: number) => void,
+  purpose: "content" | "assignment" | "submission" = "content",
+) {
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  const mime = file.type || fileMimes[extension] || "";
   const p = await post("/storage/prepare", {
     filename: file.name,
-    mime: file.type || (file.name.endsWith(".vtt") ? "text/vtt" : ""),
+    mime,
     size: file.size,
+    purpose,
   });
   await new Promise<void>((resolve, reject) => {
     const x = new XMLHttpRequest();
     x.open(p.method, p.url);
-    if (p.cloud) x.setRequestHeader("Content-Type", file.type || "text/vtt");
+    if (p.cloud) x.setRequestHeader("Content-Type", mime);
     else x.setRequestHeader("X-CSRF-Token", csrf);
     x.upload.onprogress = (e) => {
       if (e.lengthComputable)

@@ -22,6 +22,12 @@ import {
   Target,
   Mail,
   Camera,
+  ClipboardList,
+  FileText,
+  Upload,
+  Timer,
+  AlertTriangle,
+  X,
 } from "lucide-react";
 import Shell from "../components/Shell";
 import {
@@ -47,6 +53,7 @@ import {
   mins,
   date,
   Logo,
+  uploadFile,
 } from "../lib";
 export function ActivityChart({ events = [] }: { events: any[] }) {
   const days = Array.from({ length: 7 }, (_, i) => {
@@ -109,6 +116,8 @@ export default function Student({
   else if (route[0] === "notifications")
     body = <Notifications data={data} refresh={refresh} />;
   else if (route[0] === "progress") body = <Progress data={data} />;
+  else if (route[0] === "assignments")
+    body = <StudentAssignments data={data} refresh={refresh} />;
   else if (["courses", "subjects", "videos"].includes(route[0]))
     body = <Library type={route[0]} data={data} />;
   else if (!route[0]) body = <Overview data={data} />;
@@ -943,6 +952,89 @@ function Progress({ data }: { data: any }) {
       </div>
     </>
   );
+}
+function Countdown({ deadline }: { deadline: number }) {
+  const [remaining, setRemaining] = useState(Math.max(0, deadline - Date.now()));
+  useEffect(() => {
+    const tick = () => setRemaining(Math.max(0, deadline - Date.now()));
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [deadline]);
+  const total = Math.floor(remaining / 1000),
+    days = Math.floor(total / 86400),
+    hours = Math.floor((total % 86400) / 3600),
+    minutes = Math.floor((total % 3600) / 60),
+    seconds = total % 60;
+  return <span className={remaining ? "countdown" : "countdown ended"} aria-live="polite">
+    <Timer size={15} /> {remaining ? `${days ? `${days}d ` : ""}${String(hours).padStart(2,"0")}:${String(minutes).padStart(2,"0")}:${String(seconds).padStart(2,"0")}` : "Time ended"}
+  </span>;
+}
+function StudentAssignments({ data, refresh }: { data: any; refresh: () => Promise<void> | void }) {
+  const assignments = data.assignments || [], [selected, setSelected] = useState<any>(null);
+  const submitted = assignments.filter((a:any) => a.submission?.submitted_at).length;
+  return <>
+    <div className="page-heading"><div><span className="eyebrow">YOUR WORK. YOUR PROGRESS.</span><h1>Assignments made clear.</h1><p>Keep track of instructions, files, timers, and everything you have submitted.</p></div></div>
+    <div className="assignment-summary grid three">
+      <Stat icon={ClipboardList} label="Assigned" value={assignments.length}/>
+      <Stat icon={Clock} label="To complete" value={assignments.length-submitted}/>
+      <Stat icon={CheckCheck} label="Submitted" value={submitted}/>
+    </div>
+    <div className="student-assignment-list">
+      {assignments.map((a:any) => {
+        const closed = a.effective_deadline <= Date.now();
+        return <button className="student-assignment-card panel" key={a.id} onClick={() => setSelected(a)}>
+          <span className={`assignment-state ${a.submission?.submitted_at ? "submitted" : closed ? "closed" : "open"}`}>{a.submission?.submitted_at ? <><Check size={14}/> Submitted</> : closed ? <><Lock size={14}/> Closed</> : <>Open</>}</span>
+          <div><h2>{a.title}</h2><p>{a.description}</p></div>
+          <div className="student-assignment-footer"><span><FileText size={15}/>{a.resources.length} teacher files</span>{a.time_limit_minutes > 0 && !a.submission?.started_at ? <span><Timer size={15}/>{a.time_limit_minutes} minutes after start</span> : <Countdown deadline={a.effective_deadline}/>}<ChevronRight size={19}/></div>
+        </button>;
+      })}
+    </div>
+    {!assignments.length && <Empty title="No assignments right now" description="When your teacher gives you an assignment, it will appear here."/>}
+    {selected && <AssignmentWork assignment={selected} refresh={refresh} onClose={() => setSelected(null)}/>} 
+  </>;
+}
+function AssignmentWork({ assignment, refresh, onClose }: any) {
+  const [submission, setSubmission] = useState(assignment.submission),
+    [files, setFiles] = useState<any[]>([]),
+    [note, setNote] = useState(assignment.submission?.note || ""),
+    [uploading, setUploading] = useState(false),
+    [progress, setProgress] = useState(0),
+    [busy, setBusy] = useState(false),
+    toast = useToast();
+  const effectiveDeadline = submission?.started_at && assignment.time_limit_minutes > 0
+    ? Math.min(assignment.due_at, submission.started_at + assignment.time_limit_minutes * 60000)
+    : assignment.due_at;
+  const closed = effectiveDeadline <= Date.now();
+  async function start() {
+    setBusy(true);
+    try { const result = await post(`/assignments/${assignment.id}/start`); setSubmission(result); toast("Your timer has started. You’ve got this."); }
+    catch(e:any){toast(e.message,"error");} finally { setBusy(false); }
+  }
+  async function addFiles(list: FileList | null) {
+    if (!list?.length) return;
+    if (files.length + list.length > 5) return toast("You can submit up to 5 files.","error");
+    setUploading(true);
+    try {
+      const added: { id: string; filename: string; size: number }[]=[];
+      for(const file of Array.from(list)) {
+        const uploaded=await uploadFile(file,setProgress,"submission");
+        if(uploaded.state!=="ready") throw new Error("The file is still being checked. Try again shortly.");
+        added.push({id:uploaded.id,filename:file.name,size:file.size});
+      }
+      setFiles((current)=>[...current,...added]); toast("Your file is ready to submit.");
+    } catch(e:any){toast(e.message,"error");} finally {setUploading(false);setProgress(0);}
+  }
+  return <Modal title={assignment.title} wide onClose={onClose}>
+    <div className="assignment-detail-head"><div><span className={`assignment-state ${submission?.submitted_at ? "submitted" : closed ? "closed" : "open"}`}>{submission?.submitted_at ? "Submitted" : closed ? "Closed" : "Open"}</span><p>{assignment.description}</p></div><div><b>{submission?.started_at && assignment.time_limit_minutes ? "Time remaining" : "Deadline"}</b>{submission?.started_at && assignment.time_limit_minutes ? <Countdown deadline={effectiveDeadline}/> : <span>{new Date(assignment.due_at).toLocaleString()}</span>}<small>{assignment.time_limit_minutes ? `${assignment.time_limit_minutes}-minute timer starts once` : "Submit before the deadline"}</small></div></div>
+    {!!assignment.resources.length && <><div className="section-heading compact"><h2>Files from your teacher</h2></div><div className="file-list">{assignment.resources.map((f:any)=><a className="file-row" href={`/api/storage/assignment/${assignment.id}/resource/${f.id}`} key={f.id}><FileText size={18}/><span><b>{f.filename}</b><small>{Math.ceil(f.size/1024)} KB</small></span><Download size={16}/></a>)}</div></>}
+    {assignment.time_limit_minutes > 0 && !submission?.started_at && !closed ? <section className="timer-start"><Timer size={30}/><div><h3>Ready to begin?</h3><p>The {assignment.time_limit_minutes}-minute timer cannot be paused or restarted.</p></div><Button busy={busy} onClick={start}>Start assignment</Button></section> : <>
+      {submission?.files?.length > 0 && <><div className="section-heading compact"><h2>Your submitted files</h2></div><div className="file-list">{submission.files.map((f:any)=><a className="file-row" href={`/api/storage/submission/${submission.id}/file/${f.id}`} key={f.id}><FileText size={18}/><span><b>{f.filename}</b></span><Download size={16}/></a>)}</div></>}
+      {!closed && <section className="submission-box"><div className="section-heading compact"><h2>{submission?.submitted_at ? "Replace your submission" : "Send your work"}</h2></div><label className="document-upload"><Upload size={24}/><b>{uploading ? `Uploading… ${progress}%` : "Choose your answer files"}</b><small>PDF, Word, Excel, PowerPoint, text, or CSV · Up to 5 files</small><input hidden type="file" multiple disabled={uploading} accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" onChange={(e)=>addFiles(e.target.files)}/></label>{!!files.length && <div className="file-chip-list">{files.map(f=><span key={f.id}><FileText size={13}/>{f.filename}<button aria-label={`Remove ${f.filename}`} onClick={()=>setFiles(files.filter(x=>x.id!==f.id))}><X size={13}/></button></span>)}</div>}<Field label="Message to your teacher (optional)"><textarea rows={3} maxLength={3000} value={note} onChange={(e)=>setNote(e.target.value)} placeholder="Add a short note about your work…"/></Field><Button className="full" busy={busy} disabled={uploading || !files.length} onClick={async()=>{setBusy(true);try{await post(`/assignments/${assignment.id}/submit`,{uploadIds:files.map(f=>f.id),note});await refresh();toast("Your assignment was submitted successfully.");onClose();}catch(e:any){toast(e.message,"error");}finally{setBusy(false);}}}><Upload size={16}/> {submission?.submitted_at ? "Replace submission" : "Submit assignment"}</Button></section>}
+    </>}
+    {closed && !submission?.submitted_at && <div className="deadline-message"><AlertTriangle size={22}/><div><b>Submission time has ended</b><p>Contact your teacher if you need help with this assignment.</p></div></div>}
+    {submission?.feedback && <section className="feedback-card"><span className="eyebrow">TEACHER FEEDBACK</span><p>{submission.feedback}</p></section>}
+  </Modal>;
 }
 function Notifications({ data, refresh }: { data: any; refresh: () => void }) {
   const toast = useToast();

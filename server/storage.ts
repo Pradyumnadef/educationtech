@@ -42,15 +42,42 @@ const formats: Record<string, number> = {
   "image/webp": 5 * 1024 ** 2,
   "text/vtt": 1024 ** 2,
   "application/pdf": 25 * 1024 ** 2,
+  "application/msword": 25 * 1024 ** 2,
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": 25 * 1024 ** 2,
+  "application/vnd.ms-excel": 25 * 1024 ** 2,
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": 25 * 1024 ** 2,
+  "application/vnd.ms-powerpoint": 25 * 1024 ** 2,
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": 25 * 1024 ** 2,
+  "text/plain": 5 * 1024 ** 2,
+  "text/csv": 10 * 1024 ** 2,
 };
-storageRoutes.post("/prepare", auth, admin, async (req, res) => {
+const documentFormats = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+  "text/csv",
+]);
+storageRoutes.post("/prepare", auth, async (req, res) => {
   const b = z
     .object({
       filename: z.string().min(1).max(180),
       mime: z.string(),
       size: z.number().int().positive(),
+      purpose: z.enum(["content", "assignment", "submission"]).default("content"),
     })
     .parse(req.body);
+  const user = (req as any).user;
+  if (user.role === "student" && b.purpose !== "submission")
+    return res.status(403).json({ error: "Students can only upload assignment answers." });
+  if (user.role === "student" && !documentFormats.has(b.mime))
+    return res.status(400).json({ error: "Choose a PDF, Word, Excel, PowerPoint, text, or CSV file." });
+  if (b.purpose !== "content" && !documentFormats.has(b.mime))
+    return res.status(400).json({ error: "Choose a supported document file." });
   if (!formats[b.mime] || b.size > formats[b.mime])
     return res
       .status(400)
@@ -112,12 +139,19 @@ function signatureBytes(bytes: Uint8Array, mime: string) {
     return b[0] === 255 && b[1] === 216 && b[2] === 255;
   if (mime === "image/webp") return b.toString("ascii", 8, 12) === "WEBP";
   if (mime === "application/pdf") return b.toString("ascii", 0, 5) === "%PDF-";
+  if ([
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ].includes(mime)) return b.subarray(0, 4).toString("hex") === "504b0304";
+  if (["application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint"].includes(mime))
+    return b.subarray(0, 8).toString("hex") === "d0cf11e0a1b11ae1";
+  if (["text/plain", "text/csv"].includes(mime)) return !b.includes(0);
   return b.toString().startsWith("WEBVTT");
 }
 storageRoutes.post(
   "/local/:id",
   auth,
-  admin,
   (req, res, next) => {
     if (production || bucket) return res.sendStatus(404);
     next();
@@ -149,7 +183,7 @@ storageRoutes.post(
     res.json({ key: `local/${row.id}`, state: "ready" });
   },
 );
-storageRoutes.post("/complete/:id", auth, admin, async (req, res) => {
+storageRoutes.post("/complete/:id", auth, async (req, res) => {
   const row = await one("SELECT * FROM uploads WHERE id=? AND owner_id=?", [
     req.params.id,
     (req as any).user.id,
@@ -218,12 +252,64 @@ storageRoutes.post("/scan-result", async (req, res) => {
     await run("UPDATE uploads SET state='rejected' WHERE id=?", [b.uploadId]);
   res.json({ ok: true });
 });
-storageRoutes.get("/status/:id", auth, admin, async (req, res) => {
-  const row = await one("SELECT storage_key,state FROM uploads WHERE id=?", [
-    req.params.id,
+storageRoutes.get("/status/:id", auth, async (req, res) => {
+  const row = await one("SELECT storage_key,state FROM uploads WHERE id=? AND owner_id=?", [
+    req.params.id, (req as any).user.id,
   ]);
   if (!row) return res.sendStatus(404);
   res.json(row);
+});
+async function deliverDownload(row: any, req: any, res: any) {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Content-Type", row.mime);
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="${row.filename.replace(/[^a-zA-Z0-9._-]/g, "_")}"`,
+  );
+  if (bucket && !row.storage_key.startsWith("local/")) {
+    const out = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: row.storage_key }));
+    if (out.ContentLength) res.setHeader("Content-Length", out.ContentLength);
+    const stream = out.Body as Readable;
+    res.on("close", () => stream.destroy());
+    stream.on("error", () => res.destroy());
+    return stream.pipe(res);
+  }
+  const localPath = path.join(mediaDir, row.id);
+  res.setHeader("Content-Length", statSync(localPath).size);
+  return createReadStream(localPath).pipe(res);
+}
+storageRoutes.get("/assignment/:assignmentId/resource/:uploadId", auth, async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== "admin") {
+    const allowed = await one(
+      `SELECT a.id FROM learning_assignments a JOIN assignment_targets t ON t.assignment_id=a.id
+       LEFT JOIN group_members gm ON gm.group_id=t.group_id AND gm.user_id=?
+       WHERE a.id=? AND a.status='published' AND (t.user_id=? OR gm.user_id=?)`,
+      [user.id, req.params.assignmentId, user.id, user.id],
+    );
+    if (!allowed) return res.status(403).json({ error: "This assignment is not available to you." });
+  }
+  const row = await one(
+    `SELECT u.* FROM assignment_resources r JOIN uploads u ON u.id=r.upload_id AND u.state='ready'
+     WHERE r.assignment_id=? AND u.id=?`,
+    [req.params.assignmentId, req.params.uploadId],
+  );
+  if (!row) return res.status(404).json({ error: "File not found." });
+  await deliverDownload(row, req, res);
+});
+storageRoutes.get("/submission/:submissionId/file/:uploadId", auth, async (req, res) => {
+  const user = (req as any).user;
+  const row = await one(
+    `SELECT u.*,s.user_id FROM submission_files f
+     JOIN uploads u ON u.id=f.upload_id AND u.state='ready'
+     JOIN assignment_submissions s ON s.id=f.submission_id
+     WHERE f.submission_id=? AND u.id=?`,
+    [req.params.submissionId, req.params.uploadId],
+  );
+  if (!row) return res.status(404).json({ error: "File not found." });
+  if (user.role !== "admin" && row.user_id !== user.id)
+    return res.status(403).json({ error: "You cannot access this submission." });
+  await deliverDownload(row, req, res);
 });
 // Every byte-range request checks the current session and grants. The private object URL never leaves the server.
 storageRoutes.get("/media/:id/:type", auth, async (req, res) => {

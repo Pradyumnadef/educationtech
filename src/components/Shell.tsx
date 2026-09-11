@@ -23,6 +23,7 @@ import {
   ArrowUpRight,
   Leaf,
   GraduationCap,
+  ClipboardList,
 } from "lucide-react";
 import {
   Logo,
@@ -36,6 +37,7 @@ import {
 } from "../lib";
 const studentNav = [
   ["", "Overview", Home],
+  ["assignments", "Assignments", ClipboardList],
   ["courses", "My courses", BookOpen],
   ["subjects", "My subjects", Shapes],
   ["videos", "My videos", Play],
@@ -51,7 +53,8 @@ const adminNav = [
   ["chapters", "Chapters", Layers],
   ["topics", "Topics", FolderOpen],
   ["videos", "Videos", Video],
-  ["assignments", "Assignments", KeyRound],
+  ["assignments", "Assignments", ClipboardList],
+  ["access", "Content access", KeyRound],
   ["analytics", "Analytics", ChartNoAxesCombined],
   ["announcements", "Announcements", Megaphone],
   ["settings", "Settings", Settings],

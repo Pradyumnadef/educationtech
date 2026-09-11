@@ -27,6 +27,10 @@ import {
   Activity,
   Settings as SettingsIcon,
   X,
+  ClipboardList,
+  FileText,
+  Timer,
+  Eye,
 } from "lucide-react";
 import Teachers from "./Teachers";
 import Shell from "../components/Shell";
@@ -79,7 +83,9 @@ export default function Admin() {
         refresh={refresh}
       />
     );
-  else if (route === "assignments" || route === "access")
+  else if (route === "assignments")
+    body = <Coursework data={data} refresh={refresh} />;
+  else if (route === "access")
     body = <Assignments data={data} refresh={refresh} />;
   else if (route === "announcements")
     body = <Announcements data={data} refresh={refresh} />;
@@ -1404,6 +1410,153 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
       </form>
     </Modal>
   );
+}
+function Coursework({ data, refresh }: any) {
+  const emptyForm = () => ({
+    title: "",
+    description: "",
+    dueAt: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 16),
+    timeLimitMinutes: 0,
+    status: "published",
+    targetType: "student",
+    targetIds: [] as string[],
+    resourceUploadIds: [] as string[],
+  });
+  const [creating, setCreating] = useState(false),
+    [form, setForm] = useState(emptyForm),
+    [files, setFiles] = useState<any[]>([]),
+    [uploading, setUploading] = useState(false),
+    [uploadProgress, setUploadProgress] = useState(0),
+    [busy, setBusy] = useState(false),
+    [selected, setSelected] = useState<any>(null),
+    [removing, setRemoving] = useState<any>(null),
+    toast = useToast();
+  const assignments = data.coursework || [];
+  const targets = form.targetType === "student" ? data.students : data.groups;
+  const toggleTarget = (targetId: string) =>
+    setForm((f: any) => ({
+      ...f,
+      targetIds: f.targetIds.includes(targetId)
+        ? f.targetIds.filter((id: string) => id !== targetId)
+        : [...f.targetIds, targetId],
+    }));
+  async function addFiles(list: FileList | null) {
+    if (!list?.length) return;
+    if (files.length + list.length > 10) return toast("Add up to 10 resource files.", "error");
+    setUploading(true);
+    try {
+      const added: { id: string; filename: string; size: number }[] = [];
+      for (const file of Array.from(list)) {
+        const uploaded = await uploadFile(file, setUploadProgress, "assignment");
+        if (uploaded.state !== "ready") throw new Error("The file is still being checked. Try again shortly.");
+        added.push({ id: uploaded.id, filename: file.name, size: file.size });
+      }
+      setFiles((current) => [...current, ...added]);
+      setForm((f: any) => ({ ...f, resourceUploadIds: [...f.resourceUploadIds, ...added.map((x) => x.id)] }));
+      toast("Assignment resources uploaded securely.");
+    } catch (e: any) {
+      toast(e.message, "error");
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+    }
+  }
+  return (
+    <>
+      <Heading
+        eyebrow="SET THE TASK. SUPPORT THE JOURNEY."
+        title="Assignments, all in one place."
+        description="Create timed work, share useful files, and review every student submission securely."
+      >
+        <Button onClick={() => setCreating(true)}><Plus size={16} /> New assignment</Button>
+      </Heading>
+      <div className="assignment-summary grid three">
+        <Stat icon={ClipboardList} label="Assignments" value={assignments.length} />
+        <Stat icon={Clock} label="Open now" value={assignments.filter((a: any) => a.status === "published" && a.due_at > Date.now()).length} />
+        <Stat icon={CheckCheck} label="Submissions" value={assignments.reduce((n: number, a: any) => n + a.submissions.filter((s: any) => s.submitted_at).length, 0)} />
+      </div>
+      <div className="coursework-grid">
+        {assignments.map((a: any) => {
+          const targetNames = a.targets.map((t: any) =>
+            data.students.find((s: any) => s.id === t.user_id)?.name ||
+            data.groups.find((g: any) => g.id === t.group_id)?.name,
+          ).filter(Boolean);
+          return (
+            <article className="panel coursework-card" key={a.id}>
+              <div className="coursework-card-top">
+                <span className={`status ${a.status}`}>{a.status}</span>
+                <span className={a.due_at <= Date.now() ? "deadline overdue" : "deadline"}>
+                  <Clock size={14} /> {a.due_at <= Date.now() ? "Closed" : "Due"} {new Date(a.due_at).toLocaleString()}
+                </span>
+              </div>
+              <h2>{a.title}</h2>
+              <p>{a.description}</p>
+              <div className="coursework-meta">
+                <span><Users size={15} /> {targetNames.slice(0, 2).join(", ")}{targetNames.length > 2 ? ` +${targetNames.length - 2}` : ""}</span>
+                <span><Timer size={15} /> {a.time_limit_minutes ? `${a.time_limit_minutes} minute timer` : "No start timer"}</span>
+                <span><FileText size={15} /> {a.resources.length} resources</span>
+                <span><CheckCheck size={15} /> {a.submissions.filter((s: any) => s.submitted_at).length} submitted</span>
+              </div>
+              <div className="card-actions">
+                <Button variant="secondary small" onClick={() => setSelected(a)}><Eye size={14} /> View & review</Button>
+                <Button variant="ghost small" onClick={() => setRemoving(a)}><Trash2 size={14} /> Delete</Button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+      {!assignments.length && <Empty title="Create your first assignment" description="Add instructions, a deadline, an optional timer, learning files, and the students who should receive it."><Button onClick={() => setCreating(true)}><Plus size={16} /> New assignment</Button></Empty>}
+      {creating && (
+        <Modal title="Create an assignment" wide onClose={() => !busy && setCreating(false)}>
+          <form className="assignment-form" onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            try {
+              await post("/admin/coursework", { ...form, dueAt: new Date(form.dueAt).getTime() });
+              await refresh();
+              setCreating(false); setForm(emptyForm()); setFiles([]);
+              toast("Assignment published for your learners.");
+            } catch (e: any) { toast(e.message, "error"); } finally { setBusy(false); }
+          }}>
+            <div className="grid two">
+              <Field label="Assignment title"><input required maxLength={200} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Example: Grammar worksheet 1" /></Field>
+              <Field label="Deadline"><input required type="datetime-local" min={new Date().toISOString().slice(0,16)} value={form.dueAt} onChange={(e) => setForm({ ...form, dueAt: e.target.value })} /></Field>
+            </div>
+            <Field label="Instructions"><textarea required rows={5} maxLength={10000} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Explain what students need to complete and submit…" /></Field>
+            <div className="grid two">
+              <Field label="Timer after student starts (minutes)"><input type="number" min={0} max={1440} value={form.timeLimitMinutes} onChange={(e) => setForm({ ...form, timeLimitMinutes: Number(e.target.value) })} /><small>Use 0 for deadline only. The timer cannot be restarted.</small></Field>
+              <Field label="Visibility"><select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}><option value="published">Publish now</option><option value="draft">Save as draft</option></select></Field>
+            </div>
+            <div className="numbered-title mt"><span>01</span><h3>Who should receive it?</h3></div>
+            <div className="tabs"><button type="button" className={form.targetType === "student" ? "active" : ""} onClick={() => setForm({ ...form, targetType: "student", targetIds: [] })}>Students</button><button type="button" className={form.targetType === "group" ? "active" : ""} onClick={() => setForm({ ...form, targetType: "group", targetIds: [] })}>Groups</button></div>
+            <div className="assignment-picker compact-picker">
+              {targets.map((target: any) => <label key={target.id}><input type="checkbox" checked={form.targetIds.includes(target.id)} onChange={() => toggleTarget(target.id)} /><span><b>{target.name}</b><small>{target.email || target.description || "Student group"}</small></span><Users size={16} /></label>)}
+              {!targets.length && <p className="muted">Add students or groups before creating this assignment.</p>}
+            </div>
+            <div className="numbered-title mt"><span>02</span><h3>Add resource files</h3></div>
+            <label className="document-upload">
+              <Upload size={24} /><b>{uploading ? `Uploading… ${uploadProgress}%` : "Choose PDF, Word, Excel, PowerPoint, text, or CSV files"}</b><small>Up to 10 files · 25 MB each</small>
+              <input hidden type="file" multiple disabled={uploading} accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" onChange={(e) => addFiles(e.target.files)} />
+            </label>
+            {!!files.length && <div className="file-chip-list">{files.map((file) => <span key={file.id}><FileText size={14} /> {file.filename}<button type="button" aria-label={`Remove ${file.filename}`} onClick={() => { setFiles(files.filter((f) => f.id !== file.id)); setForm({ ...form, resourceUploadIds: form.resourceUploadIds.filter((id: string) => id !== file.id) }); }}><X size={13} /></button></span>)}</div>}
+            <div className="modal-actions"><Button type="button" variant="secondary" onClick={() => setCreating(false)}>Cancel</Button><Button type="submit" busy={busy} disabled={uploading || !form.targetIds.length}><Check size={16} /> Create assignment</Button></div>
+          </form>
+        </Modal>
+      )}
+      {selected && <CourseworkDetails assignment={selected} data={data} refresh={refresh} onClose={() => setSelected(null)} />}
+      {removing && <Modal title="Delete assignment?" onClose={() => setRemoving(null)}><p className="muted">This removes the assignment and its submissions from the website. This cannot be undone.</p><div className="modal-actions"><Button variant="secondary" onClick={() => setRemoving(null)}>Cancel</Button><Button busy={busy} onClick={async () => { setBusy(true); try { await del(`/admin/coursework/${removing.id}`); await refresh(); setRemoving(null); toast("Assignment deleted."); } catch(e:any) { toast(e.message,"error"); } finally { setBusy(false); } }}><Trash2 size={15} /> Delete</Button></div></Modal>}
+    </>
+  );
+}
+function CourseworkDetails({ assignment, data, refresh, onClose }: any) {
+  const [feedback, setFeedback] = useState<Record<string,string>>({}), [busy, setBusy] = useState(""), toast = useToast();
+  return <Modal title={assignment.title} wide onClose={onClose}>
+    <div className="assignment-detail-head"><div><span className={`status ${assignment.status}`}>{assignment.status}</span><p>{assignment.description}</p></div><div><b>Deadline</b><span>{new Date(assignment.due_at).toLocaleString()}</span><small>{assignment.time_limit_minutes ? `${assignment.time_limit_minutes} minutes after starting` : "Deadline only"}</small></div></div>
+    <div className="section-heading compact"><h2>Teacher resources</h2><span className="muted">{assignment.resources.length} files</span></div>
+    <div className="file-list">{assignment.resources.map((file:any) => <a className="file-row" href={`/api/storage/assignment/${assignment.id}/resource/${file.upload_id}`} key={file.upload_id}><FileText size={18}/><span><b>{file.filename}</b><small>{Math.ceil(file.size/1024)} KB</small></span><Download size={16}/></a>)}{!assignment.resources.length && <p className="muted">No resource files were attached.</p>}</div>
+    <div className="section-heading compact"><h2>Student submissions</h2><span className="muted">{assignment.submissions.length} started</span></div>
+    <div className="submission-list">{assignment.submissions.map((s:any) => <article className="submission-review" key={s.id}><div className="submission-review-head"><div><Avatar user={{name:s.student_name}} size={34}/><span><b>{s.student_name}</b><small>{s.student_email}</small></span></div><span className={`status ${s.status}`}>{s.status.replace("_"," ")}</span></div>{s.submitted_at ? <small>Submitted {new Date(s.submitted_at).toLocaleString()}</small> : <small>Started {new Date(s.started_at).toLocaleString()}</small>}{s.note && <p>{s.note}</p>}<div className="file-chip-list">{s.files.map((f:any) => <a key={f.upload_id} href={`/api/storage/submission/${s.id}/file/${f.upload_id}`}><FileText size={13}/>{f.filename}<Download size={13}/></a>)}</div>{s.submitted_at && <><textarea rows={2} value={feedback[s.id] ?? s.feedback ?? ""} onChange={(e) => setFeedback({...feedback,[s.id]:e.target.value})} placeholder="Write feedback for this student…"/><Button variant="secondary small" busy={busy===s.id} onClick={async()=>{setBusy(s.id);try{await patch(`/admin/coursework/${assignment.id}/submissions/${s.id}`,{feedback:feedback[s.id] ?? s.feedback ?? ""});await refresh();toast("Feedback saved.");}catch(e:any){toast(e.message,"error");}finally{setBusy("");}}}>Save feedback</Button></>}</article>)}{!assignment.submissions.length && <Empty title="No submissions yet" description="Student work will appear here after they start the assignment."/>}</div>
+  </Modal>;
 }
 function Assignments({ data, refresh }: any) {
   const params = new URLSearchParams(useLocation().search);

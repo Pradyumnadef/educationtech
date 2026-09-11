@@ -14,6 +14,17 @@ import {
 export const api = Router();
 const uid = (req: any) => req.user.id;
 const text = z.string().trim().min(1).max(200);
+const documentMimes = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+  "text/csv",
+]);
 const safePicture = z
   .string()
   .max(200000)
@@ -39,6 +50,39 @@ const contentSchema = z.object({
 });
 function bad(message: string, status = 400) {
   throw Object.assign(new Error(message), { status });
+}
+async function studentAssignment(userId: string, assignmentId: string) {
+  return one(
+    `SELECT DISTINCT a.* FROM learning_assignments a
+     JOIN assignment_targets t ON t.assignment_id=a.id
+     LEFT JOIN group_members gm ON gm.group_id=t.group_id AND gm.user_id=?
+     WHERE a.id=? AND a.status='published' AND (t.user_id=? OR gm.user_id=?)`,
+    [userId, assignmentId, userId, userId],
+  );
+}
+function assignmentDeadline(assignment: any, submission?: any) {
+  const timed =
+    assignment.time_limit_minutes > 0 && submission?.started_at
+      ? Number(submission.started_at) +
+        Number(assignment.time_limit_minutes) * 60000
+      : Infinity;
+  return Math.min(Number(assignment.due_at), timed);
+}
+async function assignmentResources(assignmentId: string) {
+  return query(
+    `SELECT u.id,u.filename,u.mime,u.size FROM assignment_resources r
+     JOIN uploads u ON u.id=r.upload_id AND u.state='ready'
+     WHERE r.assignment_id=? ORDER BY u.created_at`,
+    [assignmentId],
+  );
+}
+async function submissionFiles(submissionId: string) {
+  return query(
+    `SELECT u.id,u.filename,u.mime,u.size FROM submission_files f
+     JOIN uploads u ON u.id=f.upload_id AND u.state='ready'
+     WHERE f.submission_id=? ORDER BY u.created_at`,
+    [submissionId],
+  );
 }
 api.get("/catalog", async (_req, res) => {
   const rows = await query(
@@ -111,11 +155,31 @@ api.get("/learning", async (req, res) => {
     [user.id, now() - 31 * 86400000],
   );
   const settings = await one("SELECT value FROM settings WHERE id='platform'");
+  const assignments = await query(
+    `SELECT DISTINCT a.* FROM learning_assignments a
+     JOIN assignment_targets t ON t.assignment_id=a.id
+     LEFT JOIN group_members gm ON gm.group_id=t.group_id AND gm.user_id=?
+     WHERE a.status='published' AND (t.user_id=? OR gm.user_id=?)
+     ORDER BY a.due_at`,
+    [user.id, user.id, user.id],
+  );
+  for (const a of assignments) {
+    a.resources = await assignmentResources(a.id);
+    a.submission = await one(
+      "SELECT * FROM assignment_submissions WHERE assignment_id=? AND user_id=?",
+      [a.id, user.id],
+    );
+    if (a.submission) {
+      a.submission.files = await submissionFiles(a.submission.id);
+      a.effective_deadline = assignmentDeadline(a, a.submission);
+    } else a.effective_deadline = Number(a.due_at);
+  }
   res.json({
     content,
     progress,
     announcements,
     events,
+    assignments,
     settings: settings
       ? JSON.parse(settings.value)
       : {
@@ -124,6 +188,74 @@ api.get("/learning", async (req, res) => {
           welcome: "A little progress, every day.",
         },
   });
+});
+api.post("/assignments/:id/start", async (req, res) => {
+  if ((req as any).user.role !== "student") bad("Student access required.", 403);
+  const assignment = await studentAssignment(uid(req), req.params.id as string);
+  if (!assignment) bad("Assignment not found or not assigned to you.", 404);
+  if (Number(assignment.due_at) <= now()) bad("This assignment has closed.", 409);
+  await run(
+    `INSERT INTO assignment_submissions(id,assignment_id,user_id,started_at,status,note,feedback,updated_at)
+     VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(assignment_id,user_id) DO NOTHING`,
+    [id(), assignment.id, uid(req), now(), "in_progress", "", "", now()],
+  );
+  const submission = await one(
+    "SELECT * FROM assignment_submissions WHERE assignment_id=? AND user_id=?",
+    [assignment.id, uid(req)],
+  );
+  res.json({ ...submission, effective_deadline: assignmentDeadline(assignment, submission) });
+});
+api.post("/assignments/:id/submit", async (req, res) => {
+  if ((req as any).user.role !== "student") bad("Student access required.", 403);
+  const b = z
+    .object({
+      uploadIds: z.array(z.uuid()).min(1).max(5),
+      note: z.string().trim().max(3000).default(""),
+    })
+    .parse(req.body);
+  const assignment = await studentAssignment(uid(req), req.params.id as string);
+  if (!assignment) bad("Assignment not found or not assigned to you.", 404);
+  let submission = await one(
+    "SELECT * FROM assignment_submissions WHERE assignment_id=? AND user_id=?",
+    [assignment.id, uid(req)],
+  );
+  if (!submission) {
+    await run(
+      `INSERT INTO assignment_submissions(id,assignment_id,user_id,started_at,status,note,feedback,updated_at)
+       VALUES (?,?,?,?,?,?,?,?)`,
+      [id(), assignment.id, uid(req), now(), "in_progress", "", "", now()],
+    );
+    submission = await one(
+      "SELECT * FROM assignment_submissions WHERE assignment_id=? AND user_id=?",
+      [assignment.id, uid(req)],
+    );
+  }
+  if (assignmentDeadline(assignment, submission) <= now())
+    bad("The submission time has ended.", 409);
+  const files = [];
+  for (const uploadId of b.uploadIds) {
+    const upload = await one(
+      "SELECT * FROM uploads WHERE id=? AND owner_id=? AND state='ready'",
+      [uploadId, uid(req)],
+    );
+    if (!upload || !documentMimes.has(upload.mime))
+      bad("A submission file is invalid or still processing.");
+    files.push(upload);
+  }
+  await run("DELETE FROM submission_files WHERE submission_id=?", [submission.id]);
+  for (const file of files)
+    await insert("submission_files", {
+      id: id(),
+      submission_id: submission.id,
+      upload_id: file.id,
+    });
+  await update(
+    "assignment_submissions",
+    { status: "submitted", note: b.note, submitted_at: now(), updated_at: now() },
+    submission.id,
+  );
+  await audit(uid(req), "assignment.submit", assignment.id);
+  res.json({ ok: true });
 });
 api.get("/search", async (req, res) => {
   const q = z
@@ -272,6 +404,25 @@ api.get("/admin/overview", async (_req, res) => {
   const contacts = await query(
     "SELECT * FROM contacts ORDER BY created_at DESC LIMIT 50",
   );
+  const coursework = await query(
+    "SELECT * FROM learning_assignments ORDER BY created_at DESC",
+  );
+  const assignmentTargets = await query("SELECT * FROM assignment_targets");
+  const assignmentResourceRows = await query(
+    `SELECT r.id,r.assignment_id,u.id AS upload_id,u.filename,u.mime,u.size
+     FROM assignment_resources r JOIN uploads u ON u.id=r.upload_id ORDER BY u.created_at`,
+  );
+  const submissions = await query(
+    `SELECT s.*,u.name AS student_name,u.email AS student_email
+     FROM assignment_submissions s JOIN users u ON u.id=s.user_id
+     ORDER BY s.updated_at DESC`,
+  );
+  const submissionFileRows = await query(
+    `SELECT f.id,f.submission_id,u.id AS upload_id,u.filename,u.mime,u.size
+     FROM submission_files f JOIN uploads u ON u.id=f.upload_id ORDER BY u.created_at`,
+  );
+  for (const s of submissions)
+    s.files = submissionFileRows.filter((f: any) => f.submission_id === s.id);
   res.json({
     students,
     content,
@@ -286,6 +437,12 @@ api.get("/admin/overview", async (_req, res) => {
       ? JSON.parse(settings.value)
       : { name: "English Tech", supportEmail: "", welcome: "", weeklyGoal: 120 },
     contacts,
+    coursework: coursework.map((a: any) => ({
+      ...a,
+      targets: assignmentTargets.filter((t: any) => t.assignment_id === a.id),
+      resources: assignmentResourceRows.filter((r: any) => r.assignment_id === a.id),
+      submissions: submissions.filter((s: any) => s.assignment_id === a.id),
+    })),
   });
 });
 api.get("/admin/students", async (req, res) => {
@@ -533,6 +690,102 @@ api.patch("/admin/assignments/:id", async (req, res) => {
     .parse(req.body);
   await update("access_grants", b, req.params.id as string);
   await audit(uid(req), "access.change", req.params.id as string, b.status);
+  res.json({ ok: true });
+});
+const courseworkSchema = z.object({
+  title: text,
+  description: z.string().trim().min(1).max(10000),
+  dueAt: z.number().int().min(1),
+  timeLimitMinutes: z.number().int().min(0).max(1440).default(0),
+  status: z.enum(["draft", "published"]).default("published"),
+  targetType: z.enum(["student", "group"]),
+  targetIds: z.array(z.string()).min(1).max(200),
+  resourceUploadIds: z.array(z.uuid()).max(10).default([]),
+});
+async function validateCoursework(body: z.infer<typeof courseworkSchema>, teacherId: string) {
+  if (body.dueAt <= now()) bad("Choose a deadline in the future.");
+  for (const targetId of body.targetIds) {
+    const target = await one(
+      body.targetType === "student"
+        ? "SELECT id FROM users WHERE id=? AND role='student' AND status!='inactive'"
+        : "SELECT id FROM student_groups WHERE id=?",
+      [targetId],
+    );
+    if (!target) bad("One of the selected learners or groups is unavailable.");
+  }
+  for (const uploadId of body.resourceUploadIds) {
+    const upload = await one(
+      "SELECT * FROM uploads WHERE id=? AND owner_id=? AND state='ready'",
+      [uploadId, teacherId],
+    );
+    if (!upload || !documentMimes.has(upload.mime))
+      bad("An assignment resource is invalid or still processing.");
+  }
+}
+api.post("/admin/coursework", async (req, res) => {
+  const b = courseworkSchema.parse(req.body);
+  await validateCoursework(b, uid(req));
+  const assignment = await insert("learning_assignments", {
+    id: id(),
+    teacher_id: uid(req),
+    title: b.title,
+    description: b.description,
+    due_at: b.dueAt,
+    time_limit_minutes: b.timeLimitMinutes,
+    status: b.status,
+    created_at: now(),
+    updated_at: now(),
+  });
+  for (const targetId of b.targetIds)
+    await insert("assignment_targets", {
+      id: id(),
+      assignment_id: assignment.id,
+      user_id: b.targetType === "student" ? targetId : null,
+      group_id: b.targetType === "group" ? targetId : null,
+    });
+  for (const uploadId of b.resourceUploadIds)
+    await insert("assignment_resources", {
+      id: id(),
+      assignment_id: assignment.id,
+      upload_id: uploadId,
+    });
+  await audit(uid(req), "coursework.create", assignment.id, b.title);
+  res.json(assignment);
+});
+api.patch("/admin/coursework/:id", async (req, res) => {
+  const b = z
+    .object({ status: z.enum(["draft", "published"]), dueAt: z.number().int().min(1) })
+    .parse(req.body);
+  const assignment = await one("SELECT id FROM learning_assignments WHERE id=?", [req.params.id]);
+  if (!assignment) bad("Assignment not found.", 404);
+  await update(
+    "learning_assignments",
+    { status: b.status, due_at: b.dueAt, updated_at: now() },
+    assignment.id,
+  );
+  await audit(uid(req), "coursework.update", assignment.id, b.status);
+  res.json({ ok: true });
+});
+api.patch("/admin/coursework/:id/submissions/:submissionId", async (req, res) => {
+  const b = z.object({ feedback: z.string().trim().max(5000) }).parse(req.body);
+  const submission = await one(
+    "SELECT id FROM assignment_submissions WHERE id=? AND assignment_id=?",
+    [req.params.submissionId, req.params.id],
+  );
+  if (!submission) bad("Submission not found.", 404);
+  await update(
+    "assignment_submissions",
+    { feedback: b.feedback, status: "reviewed", updated_at: now() },
+    submission.id,
+  );
+  await audit(uid(req), "coursework.review", req.params.id as string);
+  res.json({ ok: true });
+});
+api.delete("/admin/coursework/:id", async (req, res) => {
+  const assignment = await one("SELECT id FROM learning_assignments WHERE id=?", [req.params.id]);
+  if (!assignment) bad("Assignment not found.", 404);
+  await run("DELETE FROM learning_assignments WHERE id=?", [assignment.id]);
+  await audit(uid(req), "coursework.delete", assignment.id);
   res.json({ ok: true });
 });
 api.post("/admin/announcements", async (req, res) => {
