@@ -133,7 +133,7 @@ export default function Auth() {
             {isAdmin
               ? "Sign in to guide your students toward their next lightbulb moment."
               : challenge
-                ? `We sent a six-digit code to ${identifier}. It’s valid for five minutes.`
+                ? `We sent a verification code to ${identifier}. It’s valid for five minutes.`
                 : signup
                   ? "A few details, a fresh start. Let’s make this space yours."
                   : "Pick up where your curiosity left off."}
@@ -199,7 +199,7 @@ export default function Auth() {
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     pattern="[0-9]{6}"
-                    maxLength={6}
+                    maxLength={8}
                     value={code}
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
                     placeholder="000000"

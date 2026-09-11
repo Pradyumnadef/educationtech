@@ -32,7 +32,7 @@ globalThis.fetch = async (input, init) => {
   if (url.includes('/user')) return Response.json(user());
   if (url.includes('/token') || url.includes('/verify')) {
     const body = JSON.parse(String(init?.body || '{}'));
-    if (url.includes('/verify') && body.token !== '123456') return Response.json({msg:'Invalid token'}, {status:400});
+    if (url.includes('/verify') && !['123456', '12345678'].includes(body.token)) return Response.json({msg:'Invalid token'}, {status:400});
     const token = ['header', Buffer.from(JSON.stringify({ exp: Math.floor(Date.now()/1000)+3600, sub: user().id })).toString('base64url'), 'signature'].join('.');
     return Response.json({ access_token: token, refresh_token: 'test-refresh', token_type: 'bearer', expires_in: 3600, user: user() });
   }
@@ -75,8 +75,8 @@ test('Real OTP adapter handles delivery failure, invalid codes, valid verificati
   assert.equal((await request('/otp/send',{identifier:email,purpose:'signup'})).response.status,429); providerError=false;
   const sent=await request('/otp/send',{identifier:email,purpose:'signup'}); assert.equal(sent.response.status,200); assert.equal(sent.data.demoCode,undefined);
   assert.equal((await request('/otp/verify',{challenge:sent.data.challenge,code:'111111'})).response.status,400);
-  const passed=await request('/otp/verify',{challenge:sent.data.challenge,code:'123456'}); assert.equal(passed.response.status,200); assert.equal(passed.data.user.role,'student');
-  assert.equal((await request('/otp/verify',{challenge:sent.data.challenge,code:'123456'})).response.status,400);
+  const passed=await request('/otp/verify',{challenge:sent.data.challenge,code:'12345678'}); assert.equal(passed.response.status,200); assert.equal(passed.data.user.role,'student');
+  assert.equal((await request('/otp/verify',{challenge:sent.data.challenge,code:'12345678'})).response.status,400);
 });
 
 test('An authenticated teacher can explicitly link Google and sign in again', async()=> {

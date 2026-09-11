@@ -1197,14 +1197,14 @@ export function Profile({ admin = false }: { admin?: boolean }) {
                 />
               </Field>
             ) : (
-              <Field label="Six-digit code">
+              <Field label="Verification code">
                 <input
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   inputMode="numeric"
                   pattern="[0-9]{6}"
                   required
-                  maxLength={6}
+                  maxLength={8}
                 />
                 {devCode && <small>Development code: {devCode}</small>}
               </Field>

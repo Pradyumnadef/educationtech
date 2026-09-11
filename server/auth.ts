@@ -115,7 +115,7 @@ authRoutes.post("/otp/verify", async (req, res) => {
   const { challenge, code } = z
     .object({
       challenge: z.uuid(),
-      code: z.string().regex(/^\d{6}$/, "Enter the six-digit code."),
+      code: z.string().regex(/^\d{6,8}$/, "Enter the verification code from your email."),
     })
     .parse(req.body);
   await throttle(`verify:${req.ip}`, 30, 900000);
