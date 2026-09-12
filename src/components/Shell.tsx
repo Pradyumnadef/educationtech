@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { NavLink, Link, useNavigate } from "react-router-dom";
 import {
   Home,
-  BookOpen,
   Shapes,
   Play,
   ChartNoAxesCombined,
@@ -38,7 +37,6 @@ import {
 const studentNav = [
   ["", "Overview", Home],
   ["assignments", "Assignments", ClipboardList],
-  ["courses", "My courses", BookOpen],
   ["subjects", "My subjects", Shapes],
   ["videos", "My videos", Play],
   ["progress", "My progress", ChartNoAxesCombined],
@@ -49,7 +47,6 @@ const adminNav = [
   ["teachers", "Teachers", GraduationCap],
   ["groups", "Student groups", GraduationCap],
   ["subjects", "Subjects", Shapes],
-  ["courses", "Courses", BookOpen],
   ["chapters", "Chapters", Layers],
   ["topics", "Topics", FolderOpen],
   ["videos", "Videos", Video],
@@ -126,7 +123,6 @@ export default function Shell({
             >
               <Icon size={19} />
               <span>{title}</span>
-              {path === "courses" && !admin && <span className="nav-dot" />}
             </NavLink>
           ))}
           {!admin && (
@@ -220,7 +216,7 @@ export default function Shell({
               onChange={(e) => setSearch(e.target.value)}
               placeholder={
                 admin
-                  ? "Find students, courses, lessons…"
+                  ? "Find students, subjects, lessons…"
                   : "Search your learning space…"
               }
             />
@@ -274,7 +270,7 @@ export default function Shell({
                     ? `/admin/${r.kind === "student" ? "students" : r.kind + "s"}?q=${encodeURIComponent(r.name)}`
                     : r.kind === "video"
                       ? `/app/watch/${r.id}`
-                      : `/app/courses/${r.id}`
+                      : `/app/subjects/${r.id}`
                 }
               >
                 <span className="eyebrow">{r.kind}</span>

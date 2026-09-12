@@ -400,7 +400,7 @@ export function CourseArt({
   if (theme?.startsWith("data:"))
     return (
       <div className="course-art">
-        <img src={theme} alt="Course thumbnail" />
+        <img src={theme} alt="Subject thumbnail" />
       </div>
     );
   const t =
@@ -645,7 +645,7 @@ export function CourseCard({
   const subject = subjectOf(item, items);
   return (
     <Link
-      to={`/app/courses/${item.id}`}
+      to={`/app/subjects/${item.id}`}
       className={`course-card ${compact ? "compact" : ""}`}
     >
       <div className="art-wrap">
@@ -692,7 +692,7 @@ export function CourseCard({
           </>
         )}
         <span className="card-link">
-          {item.locked ? "View course" : "Continue learning"}
+          {item.locked ? "View subject" : "Continue learning"}
           <ArrowUpRight size={16} />
         </span>
       </div>

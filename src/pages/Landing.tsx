@@ -30,15 +30,15 @@ import {
 const faqs = [
   [
     "How does learning on English Tech work?",
-    "Create your account, verify your email or phone, and tell us what interests you. Your teacher assigns the right courses and lessons, which appear in your personal dashboard.",
+    "Create your account, verify your email or phone, and tell us what interests you. Your teacher assigns the right subjects and lessons, which appear in your personal dashboard.",
   ],
   [
     "Can I learn at my own pace?",
     "Absolutely. Pause, replay, change playback speed, and pick up exactly where you left off. Your progress is saved as you learn.",
   ],
   [
-    "How do I get access to a course?",
-    "Your teacher manages access to individual lessons, topics, or entire courses. Selecting an interest helps them understand your goals, but does not automatically unlock a course.",
+    "How do I get access to a subject?",
+    "Your teacher manages access to individual lessons, topics, chapters, or entire subjects. Selecting an interest helps them understand your goals, but does not automatically unlock a subject.",
   ],
   [
     "Can I use English Tech on my phone?",
@@ -293,28 +293,17 @@ export default function Landing() {
               ? subjects
               : [
                   {
-                    id: "math",
-                    name: "Mathematics",
-                    description: "Find beauty in the patterns.",
-                    thumbnail: "math",
+                    id: "english",
+                    name: "English",
+                    description: "Find your voice and share your ideas.",
+                    thumbnail: "english",
                   },
                   {
-                    id: "physics",
-                    name: "Physics",
-                    description: "Make sense of the world.",
-                    thumbnail: "physics",
-                  },
-                  {
-                    id: "cs",
-                    name: "Computer Science",
-                    description: "Turn ideas into possibilities.",
-                    thumbnail: "code",
-                  },
-                  {
-                    id: "chem",
-                    name: "Chemistry",
-                    description: "Discover a world of reactions.",
-                    thumbnail: "chemistry",
+                    id: "uhv",
+                    name: "UHV (Universal Human Values)",
+                    description:
+                      "Learn with purpose, respect, and responsibility.",
+                    thumbnail: "biology",
                   },
                 ]
             ).map((s) => (

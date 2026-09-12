@@ -33,7 +33,7 @@ const safePicture = z
     "Choose a PNG, JPEG, or WebP image smaller than 150 KB.",
   );
 const contentSchema = z.object({
-  kind: z.enum(["subject", "course", "chapter", "topic", "video"]),
+  kind: z.enum(["subject", "chapter", "topic", "video"]),
   parent_id: z.string().nullable(),
   name: text,
   description: z.string().max(5000).default(""),
@@ -86,7 +86,7 @@ async function submissionFiles(submissionId: string) {
 }
 api.get("/catalog", async (_req, res) => {
   const rows = await query(
-    "SELECT id,kind,parent_id,name,description,thumbnail FROM content WHERE public=1 AND status='published' AND (publish_at IS NULL OR publish_at<=?) AND kind IN ('subject','course') ORDER BY created_at",
+    "SELECT id,kind,parent_id,name,description,thumbnail FROM content WHERE public=1 AND status='published' AND (publish_at IS NULL OR publish_at<=?) AND kind='subject' ORDER BY created_at",
     [now()],
   );
   res.json(rows);
@@ -124,7 +124,7 @@ api.get("/learning", async (req, res) => {
         allowed.has(n.id) ||
         ancestors.has(n.id) ||
         (n.public &&
-          ["subject", "course"].includes(n.kind) &&
+          n.kind === "subject" &&
           n.status === "published" &&
           (!n.publish_at || n.publish_at <= now())),
     )
@@ -190,10 +190,12 @@ api.get("/learning", async (req, res) => {
   });
 });
 api.post("/assignments/:id/start", async (req, res) => {
-  if ((req as any).user.role !== "student") bad("Student access required.", 403);
+  if ((req as any).user.role !== "student")
+    bad("Student access required.", 403);
   const assignment = await studentAssignment(uid(req), req.params.id as string);
   if (!assignment) bad("Assignment not found or not assigned to you.", 404);
-  if (Number(assignment.due_at) <= now()) bad("This assignment has closed.", 409);
+  if (Number(assignment.due_at) <= now())
+    bad("This assignment has closed.", 409);
   await run(
     `INSERT INTO assignment_submissions(id,assignment_id,user_id,started_at,status,note,feedback,updated_at)
      VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(assignment_id,user_id) DO NOTHING`,
@@ -203,10 +205,14 @@ api.post("/assignments/:id/start", async (req, res) => {
     "SELECT * FROM assignment_submissions WHERE assignment_id=? AND user_id=?",
     [assignment.id, uid(req)],
   );
-  res.json({ ...submission, effective_deadline: assignmentDeadline(assignment, submission) });
+  res.json({
+    ...submission,
+    effective_deadline: assignmentDeadline(assignment, submission),
+  });
 });
 api.post("/assignments/:id/submit", async (req, res) => {
-  if ((req as any).user.role !== "student") bad("Student access required.", 403);
+  if ((req as any).user.role !== "student")
+    bad("Student access required.", 403);
   const b = z
     .object({
       uploadIds: z.array(z.uuid()).min(1).max(5),
@@ -242,7 +248,9 @@ api.post("/assignments/:id/submit", async (req, res) => {
       bad("A submission file is invalid or still processing.");
     files.push(upload);
   }
-  await run("DELETE FROM submission_files WHERE submission_id=?", [submission.id]);
+  await run("DELETE FROM submission_files WHERE submission_id=?", [
+    submission.id,
+  ]);
   for (const file of files)
     await insert("submission_files", {
       id: id(),
@@ -251,7 +259,12 @@ api.post("/assignments/:id/submit", async (req, res) => {
     });
   await update(
     "assignment_submissions",
-    { status: "submitted", note: b.note, submitted_at: now(), updated_at: now() },
+    {
+      status: "submitted",
+      note: b.note,
+      submitted_at: now(),
+      updated_at: now(),
+    },
     submission.id,
   );
   await audit(uid(req), "assignment.submit", assignment.id);
@@ -435,12 +448,19 @@ api.get("/admin/overview", async (_req, res) => {
     logs,
     settings: settings
       ? JSON.parse(settings.value)
-      : { name: "English Tech", supportEmail: "", welcome: "", weeklyGoal: 120 },
+      : {
+          name: "English Tech",
+          supportEmail: "",
+          welcome: "",
+          weeklyGoal: 120,
+        },
     contacts,
     coursework: coursework.map((a: any) => ({
       ...a,
       targets: assignmentTargets.filter((t: any) => t.assignment_id === a.id),
-      resources: assignmentResourceRows.filter((r: any) => r.assignment_id === a.id),
+      resources: assignmentResourceRows.filter(
+        (r: any) => r.assignment_id === a.id,
+      ),
       submissions: submissions.filter((s: any) => s.assignment_id === a.id),
     })),
   });
@@ -524,15 +544,14 @@ async function validateContent(b: any, recordId?: string) {
       b.parent_id,
     ]);
     const expected: Record<string, string> = {
-      course: "subject",
-      chapter: "course",
+      chapter: "subject",
       topic: "chapter",
       video: "topic",
     };
     if (parent?.kind !== expected[b.kind] || b.parent_id === recordId)
       bad(`Select a valid ${expected[b.kind]}.`);
   }
-  if (!["subject", "course"].includes(b.kind)) b.public = 0;
+  if (b.kind !== "subject") b.public = 0;
   for (const [field, mime] of [
     ["storage_key", "video/"],
     ["caption_key", "text/vtt"],
@@ -695,10 +714,19 @@ api.patch("/admin/assignments/:id", async (req, res) => {
 const courseworkSchema = z.object({
   title: text,
   description: z.string().trim().min(1).max(10000),
-  quizUrl: z.string().trim().max(2048).refine((value) => {
-    if (!value) return true;
-    try { return new URL(value).protocol === "https:"; } catch { return false; }
-  }, "Enter a valid secure HTTPS quiz link.").default(""),
+  quizUrl: z
+    .string()
+    .trim()
+    .max(2048)
+    .refine((value) => {
+      if (!value) return true;
+      try {
+        return new URL(value).protocol === "https:";
+      } catch {
+        return false;
+      }
+    }, "Enter a valid secure HTTPS quiz link.")
+    .default(""),
   dueAt: z.number().int().min(1),
   timeLimitMinutes: z.number().int().min(0).max(1440).default(0),
   status: z.enum(["draft", "published"]).default("published"),
@@ -706,7 +734,10 @@ const courseworkSchema = z.object({
   targetIds: z.array(z.string()).min(1).max(200),
   resourceUploadIds: z.array(z.uuid()).max(10).default([]),
 });
-async function validateCoursework(body: z.infer<typeof courseworkSchema>, teacherId: string) {
+async function validateCoursework(
+  body: z.infer<typeof courseworkSchema>,
+  teacherId: string,
+) {
   if (body.dueAt <= now()) bad("Choose a deadline in the future.");
   for (const targetId of body.targetIds) {
     const target = await one(
@@ -759,9 +790,15 @@ api.post("/admin/coursework", async (req, res) => {
 });
 api.patch("/admin/coursework/:id", async (req, res) => {
   const b = z
-    .object({ status: z.enum(["draft", "published"]), dueAt: z.number().int().min(1) })
+    .object({
+      status: z.enum(["draft", "published"]),
+      dueAt: z.number().int().min(1),
+    })
     .parse(req.body);
-  const assignment = await one("SELECT id FROM learning_assignments WHERE id=?", [req.params.id]);
+  const assignment = await one(
+    "SELECT id FROM learning_assignments WHERE id=?",
+    [req.params.id],
+  );
   if (!assignment) bad("Assignment not found.", 404);
   await update(
     "learning_assignments",
@@ -771,23 +808,31 @@ api.patch("/admin/coursework/:id", async (req, res) => {
   await audit(uid(req), "coursework.update", assignment.id, b.status);
   res.json({ ok: true });
 });
-api.patch("/admin/coursework/:id/submissions/:submissionId", async (req, res) => {
-  const b = z.object({ feedback: z.string().trim().max(5000) }).parse(req.body);
-  const submission = await one(
-    "SELECT id FROM assignment_submissions WHERE id=? AND assignment_id=?",
-    [req.params.submissionId, req.params.id],
-  );
-  if (!submission) bad("Submission not found.", 404);
-  await update(
-    "assignment_submissions",
-    { feedback: b.feedback, status: "reviewed", updated_at: now() },
-    submission.id,
-  );
-  await audit(uid(req), "coursework.review", req.params.id as string);
-  res.json({ ok: true });
-});
+api.patch(
+  "/admin/coursework/:id/submissions/:submissionId",
+  async (req, res) => {
+    const b = z
+      .object({ feedback: z.string().trim().max(5000) })
+      .parse(req.body);
+    const submission = await one(
+      "SELECT id FROM assignment_submissions WHERE id=? AND assignment_id=?",
+      [req.params.submissionId, req.params.id],
+    );
+    if (!submission) bad("Submission not found.", 404);
+    await update(
+      "assignment_submissions",
+      { feedback: b.feedback, status: "reviewed", updated_at: now() },
+      submission.id,
+    );
+    await audit(uid(req), "coursework.review", req.params.id as string);
+    res.json({ ok: true });
+  },
+);
 api.delete("/admin/coursework/:id", async (req, res) => {
-  const assignment = await one("SELECT id FROM learning_assignments WHERE id=?", [req.params.id]);
+  const assignment = await one(
+    "SELECT id FROM learning_assignments WHERE id=?",
+    [req.params.id],
+  );
   if (!assignment) bad("Assignment not found.", 404);
   await run("DELETE FROM learning_assignments WHERE id=?", [assignment.id]);
   await audit(uid(req), "coursework.delete", assignment.id);

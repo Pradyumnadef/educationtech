@@ -110,15 +110,15 @@ export default function Student({
   else if (error) body = <Failure error={error} retry={refresh} />;
   else if (route[0] === "watch" && route[1])
     body = <Watch videoId={route[1]} data={data} refresh={refresh} />;
-  else if (route[0] === "courses" && route[1])
-    body = <CourseDetail id={route[1]} data={data} />;
+  else if (route[0] === "subjects" && route[1])
+    body = <SubjectDetail id={route[1]} data={data} />;
   else if (route[0] === "profile") body = <Profile />;
   else if (route[0] === "notifications")
     body = <Notifications data={data} refresh={refresh} />;
   else if (route[0] === "progress") body = <Progress data={data} />;
   else if (route[0] === "assignments")
     body = <StudentAssignments data={data} refresh={refresh} />;
-  else if (["courses", "subjects", "videos"].includes(route[0]))
+  else if (["subjects", "videos"].includes(route[0]))
     body = <Library type={route[0]} data={data} />;
   else if (!route[0]) body = <Overview data={data} />;
   else
@@ -142,7 +142,7 @@ function Overview({ data }: { data: any }) {
   const { user } = useAuth();
   const items: Item[] = data.content,
     progress = data.progress,
-    courses = items.filter((i) => i.kind === "course" && i.accessible),
+    subjects = items.filter((i) => i.kind === "subject" && i.accessible),
     videos = items.filter((i) => i.kind === "video" && i.accessible),
     completed = progress.filter((p: any) => p.completed).length;
   const continuing = [...progress]
@@ -153,9 +153,9 @@ function Overview({ data }: { data: any }) {
     videos.find(
       (i) => !progress.find((p: any) => p.video_id === i.id && p.completed),
     );
-  const nextCourse =
+  const nextSubject =
     next &&
-    courses.find((c) => descendants(c, items).some((i) => i.id === next.id));
+    subjects.find((s) => descendants(s, items).some((i) => i.id === next.id));
   const totalWatch = data.events.reduce(
       (a: number, e: any) => a + Number(e.seconds),
       0,
@@ -206,9 +206,9 @@ function Overview({ data }: { data: any }) {
           <p>Pick up where you left off. Your next discovery is waiting.</p>
           <Link
             className="button cream"
-            to={next ? `/app/watch/${next.id}` : "/app/courses"}
+            to={next ? `/app/watch/${next.id}` : "/app/subjects"}
           >
-            {next ? "Let’s keep learning" : "Explore your courses"}
+            {next ? "Let’s keep learning" : "Explore your subjects"}
             <ArrowUpRight size={17} />
           </Link>
         </div>
@@ -250,8 +250,8 @@ function Overview({ data }: { data: any }) {
       <div className="stats-grid">
         <Stat
           icon={BookOpen}
-          label="Assigned courses"
-          value={courses.length}
+          label="Assigned subjects"
+          value={subjects.length}
           note="A world to explore"
           color="green"
         />
@@ -299,7 +299,7 @@ function Overview({ data }: { data: any }) {
               </div>
               <div className="continue-info">
                 <span className="eyebrow">
-                  {nextCourse?.name || "YOUR NEXT LESSON"}
+                  {nextSubject?.name || "YOUR NEXT LESSON"}
                 </span>
                 <h3>{next.name}</h3>
                 <p>
@@ -341,14 +341,14 @@ function Overview({ data }: { data: any }) {
           )}
           <div className="section-heading compact course-section-title">
             <h2>
-              Your learning paths <span>{courses.length}</span>
+              Your subjects <span>{subjects.length}</span>
             </h2>
-            <Link to="/app/courses">
+            <Link to="/app/subjects">
               View all <ArrowUpRight size={15} />
             </Link>
           </div>
           <div className="grid two">
-            {courses.slice(0, 2).map((c) => (
+            {subjects.slice(0, 2).map((c) => (
               <CourseCard
                 key={c.id}
                 item={c}
@@ -357,7 +357,7 @@ function Overview({ data }: { data: any }) {
               />
             ))}
           </div>
-          {!courses.length && <Empty />}
+          {!subjects.length && <Empty />}
         </div>
         <aside className="dashboard-secondary">
           <section className="panel weekly-panel">
@@ -449,8 +449,7 @@ function Library({ type, data }: { type: string; data: any }) {
   }, [location.search]);
   const debounced = useDebounced(search);
   const items: Item[] = data.content;
-  const kind =
-    type === "courses" ? "course" : type === "subjects" ? "subject" : "video";
+  const kind = type === "subjects" ? "subject" : "video";
   const filtered = items.filter(
     (i) =>
       i.kind === kind &&
@@ -466,11 +465,9 @@ function Library({ type, data }: { type: string; data: any }) {
         <div>
           <span className="eyebrow">FOLLOW YOUR CURIOSITY</span>
           <h1>
-            {type === "courses"
-              ? "Your learning paths"
-              : type === "subjects"
-                ? "A world to explore"
-                : "One lesson at a time"}
+            {type === "subjects"
+              ? "A world to explore"
+              : "One lesson at a time"}
           </h1>
           <p>Space to discover. Room to grow. A pace that’s yours.</p>
         </div>
@@ -567,7 +564,7 @@ function VideoRow({
     </Link>
   );
 }
-function CourseDetail({ id, data }: { id: string; data: any }) {
+function SubjectDetail({ id, data }: { id: string; data: any }) {
   const items: Item[] = data.content,
     node = items.find((n) => n.id === id);
   if (!node)
@@ -581,8 +578,8 @@ function CourseDetail({ id, data }: { id: string; data: any }) {
     videos = children.filter((c) => c.kind === "video" && c.accessible);
   return (
     <>
-      <Link className="back-link" to="/app/courses">
-        <ArrowLeft size={15} /> Your learning paths
+      <Link className="back-link" to="/app/subjects">
+        <ArrowLeft size={15} /> Your subjects
       </Link>
       <div className="course-detail-hero">
         <div>
@@ -887,8 +884,8 @@ function ShieldIcon() {
   return <Lock size={13} />;
 }
 function Progress({ data }: { data: any }) {
-  const courses = data.content.filter(
-    (n: Item) => n.kind === "course" && n.accessible,
+  const subjects = data.content.filter(
+    (n: Item) => n.kind === "subject" && n.accessible,
   );
   return (
     <>
@@ -924,10 +921,10 @@ function Progress({ data }: { data: any }) {
         </section>
       </div>
       <div className="section-heading compact">
-        <h2>Your path, in perspective</h2>
+        <h2>Your subjects, in perspective</h2>
       </div>
       <div className="grid three">
-        {courses.map((c: Item) => (
+        {subjects.map((c: Item) => (
           <CourseCard
             key={c.id}
             item={c}
@@ -954,7 +951,9 @@ function Progress({ data }: { data: any }) {
   );
 }
 function Countdown({ deadline }: { deadline: number }) {
-  const [remaining, setRemaining] = useState(Math.max(0, deadline - Date.now()));
+  const [remaining, setRemaining] = useState(
+    Math.max(0, deadline - Date.now()),
+  );
   useEffect(() => {
     const tick = () => setRemaining(Math.max(0, deadline - Date.now()));
     tick();
@@ -966,33 +965,117 @@ function Countdown({ deadline }: { deadline: number }) {
     hours = Math.floor((total % 86400) / 3600),
     minutes = Math.floor((total % 3600) / 60),
     seconds = total % 60;
-  return <span className={remaining ? "countdown" : "countdown ended"} aria-live="polite">
-    <Timer size={15} /> {remaining ? `${days ? `${days}d ` : ""}${String(hours).padStart(2,"0")}:${String(minutes).padStart(2,"0")}:${String(seconds).padStart(2,"0")}` : "Time ended"}
-  </span>;
+  return (
+    <span
+      className={remaining ? "countdown" : "countdown ended"}
+      aria-live="polite"
+    >
+      <Timer size={15} />{" "}
+      {remaining
+        ? `${days ? `${days}d ` : ""}${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+        : "Time ended"}
+    </span>
+  );
 }
-function StudentAssignments({ data, refresh }: { data: any; refresh: () => Promise<void> | void }) {
-  const assignments = data.assignments || [], [selected, setSelected] = useState<any>(null);
-  const submitted = assignments.filter((a:any) => a.submission?.submitted_at).length;
-  return <>
-    <div className="page-heading"><div><span className="eyebrow">YOUR WORK. YOUR PROGRESS.</span><h1>Assignments made clear.</h1><p>Keep track of instructions, files, timers, and everything you have submitted.</p></div></div>
-    <div className="assignment-summary grid three">
-      <Stat icon={ClipboardList} label="Assigned" value={assignments.length}/>
-      <Stat icon={Clock} label="To complete" value={assignments.length-submitted}/>
-      <Stat icon={CheckCheck} label="Submitted" value={submitted}/>
-    </div>
-    <div className="student-assignment-list">
-      {assignments.map((a:any) => {
-        const closed = a.effective_deadline <= Date.now();
-        return <button className="student-assignment-card panel" key={a.id} onClick={() => setSelected(a)}>
-          <span className={`assignment-state ${a.submission?.submitted_at ? "submitted" : closed ? "closed" : "open"}`}>{a.submission?.submitted_at ? <><Check size={14}/> Submitted</> : closed ? <><Lock size={14}/> Closed</> : <>Open</>}</span>
-          <div><h2>{a.title}</h2><p>{a.description}</p></div>
-          <div className="student-assignment-footer"><span><FileText size={15}/>{a.resources.length} teacher files</span>{a.time_limit_minutes > 0 && !a.submission?.started_at ? <span><Timer size={15}/>{a.time_limit_minutes} minutes after start</span> : <Countdown deadline={a.effective_deadline}/>}<ChevronRight size={19}/></div>
-        </button>;
-      })}
-    </div>
-    {!assignments.length && <Empty title="No assignments right now" description="When your teacher gives you an assignment, it will appear here."/>}
-    {selected && <AssignmentWork assignment={selected} refresh={refresh} onClose={() => setSelected(null)}/>} 
-  </>;
+function StudentAssignments({
+  data,
+  refresh,
+}: {
+  data: any;
+  refresh: () => Promise<void> | void;
+}) {
+  const assignments = data.assignments || [],
+    [selected, setSelected] = useState<any>(null);
+  const submitted = assignments.filter(
+    (a: any) => a.submission?.submitted_at,
+  ).length;
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">YOUR WORK. YOUR PROGRESS.</span>
+          <h1>Assignments made clear.</h1>
+          <p>
+            Keep track of instructions, files, timers, and everything you have
+            submitted.
+          </p>
+        </div>
+      </div>
+      <div className="assignment-summary grid three">
+        <Stat
+          icon={ClipboardList}
+          label="Assigned"
+          value={assignments.length}
+        />
+        <Stat
+          icon={Clock}
+          label="To complete"
+          value={assignments.length - submitted}
+        />
+        <Stat icon={CheckCheck} label="Submitted" value={submitted} />
+      </div>
+      <div className="student-assignment-list">
+        {assignments.map((a: any) => {
+          const closed = a.effective_deadline <= Date.now();
+          return (
+            <button
+              className="student-assignment-card panel"
+              key={a.id}
+              onClick={() => setSelected(a)}
+            >
+              <span
+                className={`assignment-state ${a.submission?.submitted_at ? "submitted" : closed ? "closed" : "open"}`}
+              >
+                {a.submission?.submitted_at ? (
+                  <>
+                    <Check size={14} /> Submitted
+                  </>
+                ) : closed ? (
+                  <>
+                    <Lock size={14} /> Closed
+                  </>
+                ) : (
+                  <>Open</>
+                )}
+              </span>
+              <div>
+                <h2>{a.title}</h2>
+                <p>{a.description}</p>
+              </div>
+              <div className="student-assignment-footer">
+                <span>
+                  <FileText size={15} />
+                  {a.resources.length} teacher files
+                </span>
+                {a.time_limit_minutes > 0 && !a.submission?.started_at ? (
+                  <span>
+                    <Timer size={15} />
+                    {a.time_limit_minutes} minutes after start
+                  </span>
+                ) : (
+                  <Countdown deadline={a.effective_deadline} />
+                )}
+                <ChevronRight size={19} />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      {!assignments.length && (
+        <Empty
+          title="No assignments right now"
+          description="When your teacher gives you an assignment, it will appear here."
+        />
+      )}
+      {selected && (
+        <AssignmentWork
+          assignment={selected}
+          refresh={refresh}
+          onClose={() => setSelected(null)}
+        />
+      )}
+    </>
+  );
 }
 function AssignmentWork({ assignment, refresh, onClose }: any) {
   const [submission, setSubmission] = useState(assignment.submission),
@@ -1002,39 +1085,260 @@ function AssignmentWork({ assignment, refresh, onClose }: any) {
     [progress, setProgress] = useState(0),
     [busy, setBusy] = useState(false),
     toast = useToast();
-  const effectiveDeadline = submission?.started_at && assignment.time_limit_minutes > 0
-    ? Math.min(assignment.due_at, submission.started_at + assignment.time_limit_minutes * 60000)
-    : assignment.due_at;
+  const effectiveDeadline =
+    submission?.started_at && assignment.time_limit_minutes > 0
+      ? Math.min(
+          assignment.due_at,
+          submission.started_at + assignment.time_limit_minutes * 60000,
+        )
+      : assignment.due_at;
   const closed = effectiveDeadline <= Date.now();
   async function start() {
     setBusy(true);
-    try { const result = await post(`/assignments/${assignment.id}/start`); setSubmission(result); toast("Your timer has started. You’ve got this."); }
-    catch(e:any){toast(e.message,"error");} finally { setBusy(false); }
+    try {
+      const result = await post(`/assignments/${assignment.id}/start`);
+      setSubmission(result);
+      toast("Your timer has started. You’ve got this.");
+    } catch (e: any) {
+      toast(e.message, "error");
+    } finally {
+      setBusy(false);
+    }
   }
   async function addFiles(list: FileList | null) {
     if (!list?.length) return;
-    if (files.length + list.length > 5) return toast("You can submit up to 5 files.","error");
+    if (files.length + list.length > 5)
+      return toast("You can submit up to 5 files.", "error");
     setUploading(true);
     try {
-      const added: { id: string; filename: string; size: number }[]=[];
-      for(const file of Array.from(list)) {
-        const uploaded=await uploadFile(file,setProgress,"submission");
-        if(uploaded.state!=="ready") throw new Error("The file is still being checked. Try again shortly.");
-        added.push({id:uploaded.id,filename:file.name,size:file.size});
+      const added: { id: string; filename: string; size: number }[] = [];
+      for (const file of Array.from(list)) {
+        const uploaded = await uploadFile(file, setProgress, "submission");
+        if (uploaded.state !== "ready")
+          throw new Error(
+            "The file is still being checked. Try again shortly.",
+          );
+        added.push({ id: uploaded.id, filename: file.name, size: file.size });
       }
-      setFiles((current)=>[...current,...added]); toast("Your file is ready to submit.");
-    } catch(e:any){toast(e.message,"error");} finally {setUploading(false);setProgress(0);}
+      setFiles((current) => [...current, ...added]);
+      toast("Your file is ready to submit.");
+    } catch (e: any) {
+      toast(e.message, "error");
+    } finally {
+      setUploading(false);
+      setProgress(0);
+    }
   }
-  return <Modal title={assignment.title} wide onClose={onClose}>
-    <div className="assignment-detail-head"><div><span className={`assignment-state ${submission?.submitted_at ? "submitted" : closed ? "closed" : "open"}`}>{submission?.submitted_at ? "Submitted" : closed ? "Closed" : "Open"}</span><p>{assignment.description}</p>{assignment.quiz_url && !closed && (!assignment.time_limit_minutes || submission?.started_at) && <a className="button quiz-link" href={assignment.quiz_url} target="_blank" rel="noopener noreferrer">Open Google Quiz <ArrowUpRight size={15}/></a>}</div><div><b>{submission?.started_at && assignment.time_limit_minutes ? "Time remaining" : "Deadline"}</b>{submission?.started_at && assignment.time_limit_minutes ? <Countdown deadline={effectiveDeadline}/> : <span>{new Date(assignment.due_at).toLocaleString()}</span>}<small>{assignment.time_limit_minutes ? `${assignment.time_limit_minutes}-minute timer starts once` : "Submit before the deadline"}</small></div></div>
-    {!!assignment.resources.length && <><div className="section-heading compact"><h2>Files from your teacher</h2></div><div className="file-list">{assignment.resources.map((f:any)=><a className="file-row" href={`/api/storage/assignment/${assignment.id}/resource/${f.id}`} key={f.id}><FileText size={18}/><span><b>{f.filename}</b><small>{Math.ceil(f.size/1024)} KB</small></span><Download size={16}/></a>)}</div></>}
-    {assignment.time_limit_minutes > 0 && !submission?.started_at && !closed ? <section className="timer-start"><Timer size={30}/><div><h3>Ready to begin?</h3><p>The {assignment.time_limit_minutes}-minute timer cannot be paused or restarted.</p></div><Button busy={busy} onClick={start}>Start assignment</Button></section> : <>
-      {submission?.files?.length > 0 && <><div className="section-heading compact"><h2>Your submitted files</h2></div><div className="file-list">{submission.files.map((f:any)=><a className="file-row" href={`/api/storage/submission/${submission.id}/file/${f.id}`} key={f.id}><FileText size={18}/><span><b>{f.filename}</b></span><Download size={16}/></a>)}</div></>}
-      {!closed && <section className="submission-box"><div className="section-heading compact"><h2>{submission?.submitted_at ? "Replace your submission" : "Send your work"}</h2></div><label className="document-upload"><Upload size={24}/><b>{uploading ? `Uploading… ${progress}%` : "Choose your answer files"}</b><small>PDF, Word, Excel, PowerPoint, text, or CSV · Up to 5 files</small><input hidden type="file" multiple disabled={uploading} accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" onChange={(e)=>addFiles(e.target.files)}/></label>{!!files.length && <div className="file-chip-list">{files.map(f=><span key={f.id}><FileText size={13}/>{f.filename}<button aria-label={`Remove ${f.filename}`} onClick={()=>setFiles(files.filter(x=>x.id!==f.id))}><X size={13}/></button></span>)}</div>}<Field label="Message to your teacher (optional)"><textarea rows={3} maxLength={3000} value={note} onChange={(e)=>setNote(e.target.value)} placeholder="Add a short note about your work…"/></Field><Button className="full" busy={busy} disabled={uploading || !files.length} onClick={async()=>{setBusy(true);try{await post(`/assignments/${assignment.id}/submit`,{uploadIds:files.map(f=>f.id),note});await refresh();toast("Your assignment was submitted successfully.");onClose();}catch(e:any){toast(e.message,"error");}finally{setBusy(false);}}}><Upload size={16}/> {submission?.submitted_at ? "Replace submission" : "Submit assignment"}</Button></section>}
-    </>}
-    {closed && !submission?.submitted_at && <div className="deadline-message"><AlertTriangle size={22}/><div><b>Submission time has ended</b><p>Contact your teacher if you need help with this assignment.</p></div></div>}
-    {submission?.feedback && <section className="feedback-card"><span className="eyebrow">TEACHER FEEDBACK</span><p>{submission.feedback}</p></section>}
-  </Modal>;
+  return (
+    <Modal title={assignment.title} wide onClose={onClose}>
+      <div className="assignment-detail-head">
+        <div>
+          <span
+            className={`assignment-state ${submission?.submitted_at ? "submitted" : closed ? "closed" : "open"}`}
+          >
+            {submission?.submitted_at
+              ? "Submitted"
+              : closed
+                ? "Closed"
+                : "Open"}
+          </span>
+          <p>{assignment.description}</p>
+          {assignment.quiz_url &&
+            !closed &&
+            (!assignment.time_limit_minutes || submission?.started_at) && (
+              <a
+                className="button quiz-link"
+                href={assignment.quiz_url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open Google Quiz <ArrowUpRight size={15} />
+              </a>
+            )}
+        </div>
+        <div>
+          <b>
+            {submission?.started_at && assignment.time_limit_minutes
+              ? "Time remaining"
+              : "Deadline"}
+          </b>
+          {submission?.started_at && assignment.time_limit_minutes ? (
+            <Countdown deadline={effectiveDeadline} />
+          ) : (
+            <span>{new Date(assignment.due_at).toLocaleString()}</span>
+          )}
+          <small>
+            {assignment.time_limit_minutes
+              ? `${assignment.time_limit_minutes}-minute timer starts once`
+              : "Submit before the deadline"}
+          </small>
+        </div>
+      </div>
+      {!!assignment.resources.length && (
+        <>
+          <div className="section-heading compact">
+            <h2>Files from your teacher</h2>
+          </div>
+          <div className="file-list">
+            {assignment.resources.map((f: any) => (
+              <a
+                className="file-row"
+                href={`/api/storage/assignment/${assignment.id}/resource/${f.id}`}
+                key={f.id}
+              >
+                <FileText size={18} />
+                <span>
+                  <b>{f.filename}</b>
+                  <small>{Math.ceil(f.size / 1024)} KB</small>
+                </span>
+                <Download size={16} />
+              </a>
+            ))}
+          </div>
+        </>
+      )}
+      {assignment.time_limit_minutes > 0 &&
+      !submission?.started_at &&
+      !closed ? (
+        <section className="timer-start">
+          <Timer size={30} />
+          <div>
+            <h3>Ready to begin?</h3>
+            <p>
+              The {assignment.time_limit_minutes}-minute timer cannot be paused
+              or restarted.
+            </p>
+          </div>
+          <Button busy={busy} onClick={start}>
+            Start assignment
+          </Button>
+        </section>
+      ) : (
+        <>
+          {submission?.files?.length > 0 && (
+            <>
+              <div className="section-heading compact">
+                <h2>Your submitted files</h2>
+              </div>
+              <div className="file-list">
+                {submission.files.map((f: any) => (
+                  <a
+                    className="file-row"
+                    href={`/api/storage/submission/${submission.id}/file/${f.id}`}
+                    key={f.id}
+                  >
+                    <FileText size={18} />
+                    <span>
+                      <b>{f.filename}</b>
+                    </span>
+                    <Download size={16} />
+                  </a>
+                ))}
+              </div>
+            </>
+          )}
+          {!closed && (
+            <section className="submission-box">
+              <div className="section-heading compact">
+                <h2>
+                  {submission?.submitted_at
+                    ? "Replace your submission"
+                    : "Send your work"}
+                </h2>
+              </div>
+              <label className="document-upload">
+                <Upload size={24} />
+                <b>
+                  {uploading
+                    ? `Uploading… ${progress}%`
+                    : "Choose your answer files"}
+                </b>
+                <small>
+                  PDF, Word, Excel, PowerPoint, text, or CSV · Up to 5 files
+                </small>
+                <input
+                  hidden
+                  type="file"
+                  multiple
+                  disabled={uploading}
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+                  onChange={(e) => addFiles(e.target.files)}
+                />
+              </label>
+              {!!files.length && (
+                <div className="file-chip-list">
+                  {files.map((f) => (
+                    <span key={f.id}>
+                      <FileText size={13} />
+                      {f.filename}
+                      <button
+                        aria-label={`Remove ${f.filename}`}
+                        onClick={() =>
+                          setFiles(files.filter((x) => x.id !== f.id))
+                        }
+                      >
+                        <X size={13} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <Field label="Message to your teacher (optional)">
+                <textarea
+                  rows={3}
+                  maxLength={3000}
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Add a short note about your work…"
+                />
+              </Field>
+              <Button
+                className="full"
+                busy={busy}
+                disabled={uploading || !files.length}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await post(`/assignments/${assignment.id}/submit`, {
+                      uploadIds: files.map((f) => f.id),
+                      note,
+                    });
+                    await refresh();
+                    toast("Your assignment was submitted successfully.");
+                    onClose();
+                  } catch (e: any) {
+                    toast(e.message, "error");
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                <Upload size={16} />{" "}
+                {submission?.submitted_at
+                  ? "Replace submission"
+                  : "Submit assignment"}
+              </Button>
+            </section>
+          )}
+        </>
+      )}
+      {closed && !submission?.submitted_at && (
+        <div className="deadline-message">
+          <AlertTriangle size={22} />
+          <div>
+            <b>Submission time has ended</b>
+            <p>Contact your teacher if you need help with this assignment.</p>
+          </div>
+        </div>
+      )}
+      {submission?.feedback && (
+        <section className="feedback-card">
+          <span className="eyebrow">TEACHER FEEDBACK</span>
+          <p>{submission.feedback}</p>
+        </section>
+      )}
+    </Modal>
+  );
 }
 function Notifications({ data, refresh }: { data: any; refresh: () => void }) {
   const toast = useToast();
@@ -1102,18 +1406,7 @@ export function Profile({ admin = false }: { admin?: boolean }) {
     [challenge, setChallenge] = useState(""),
     [code, setCode] = useState(""),
     [devCode, setDevCode] = useState("");
-  const subjects = [
-    "Mathematics",
-    "Physics",
-    "Chemistry",
-    "Biology",
-    "Computer Science",
-    "Programming",
-    "Engineering",
-    "English",
-    "General Knowledge",
-    "Other",
-  ];
+  const subjects = ["English", "UHV (Universal Human Values)"];
   return (
     <>
       <div className="page-heading">
@@ -1130,11 +1423,23 @@ export function Profile({ admin = false }: { admin?: boolean }) {
           <p>{user.email || user.phone}</p>
           <span className="pill">{admin ? "Teacher" : "Curious mind"}</span>
           <small>Growing with us since {date(user.created_at)}</small>
-          <Button variant="secondary" onClick={async () => {
-            try { const r = await post("/auth/google/start", { action: "link" }); window.location.assign(r.url); }
-            catch (e: any) { toast(e.message, "error"); }
-          }}>Connect Google account</Button>
-          <small>Use the same email as your profile. Teachers must connect here before using Google sign-in.</small>
+          <Button
+            variant="secondary"
+            onClick={async () => {
+              try {
+                const r = await post("/auth/google/start", { action: "link" });
+                window.location.assign(r.url);
+              } catch (e: any) {
+                toast(e.message, "error");
+              }
+            }}
+          >
+            Connect Google account
+          </Button>
+          <small>
+            Use the same email as your profile. Teachers must connect here
+            before using Google sign-in.
+          </small>
           <label className="button secondary small">
             <Camera size={16} /> Change photo
             <input
@@ -1374,16 +1679,8 @@ function Onboarding() {
         {step === 1 && (
           <div className="onboarding-subjects">
             {[
-              ["Mathematics", "math"],
-              ["Physics", "physics"],
-              ["Chemistry", "chemistry"],
-              ["Biology", "biology"],
-              ["Computer Science", "code"],
-              ["Programming", "code"],
-              ["Engineering", "physics"],
               ["English", "english"],
-              ["General Knowledge", "english"],
-              ["Other", "biology"],
+              ["UHV (Universal Human Values)", "biology"],
             ].map(([s, t]) => (
               <button
                 className={selected.includes(s) ? "selected" : ""}
@@ -1413,7 +1710,7 @@ function Onboarding() {
               value={topics}
               onChange={(e) => setTopics(e.target.value)}
               maxLength={800}
-              placeholder="Quadratic equations, Python, creative writing…"
+              placeholder="Spoken English, grammar, harmony, ethics…"
             />
           </Field>
         )}

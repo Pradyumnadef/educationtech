@@ -6,7 +6,7 @@ Project: cbfeamcsymukjsfmvviq (English-Tech), Mumbai, Free plan. Supabase report
 
 The local website now uses Supabase PostgreSQL through the Session pooler with TLS certificate verification. The existing teacher, owner claim, session, rate limits, and audit record were copied in a transaction. All source/destination row counts matched. The old SQLite file remains as a rollback snapshot and no longer receives website writes.
 
-The 17 application tables store profiles, authentication records, courses/topics/video metadata, access assignments, student groups, progress, watch events, announcements, reads, contacts, settings, uploads metadata, and audit records. This does not record unsent form keystrokes or every interface click. Passwords and OTPs are stored as hashes.
+The application tables store profiles, authentication records, subject/chapter/topic/video metadata, access assignments, student groups, progress, watch events, announcements, reads, contacts, settings, uploads metadata, and audit records. This does not record unsent form keystrokes or every interface click. Passwords and OTPs are stored as hashes.
 
 The backend uses english_tech_server, a role with only table CRUD and schema usage permissions. It cannot create tables or roles. Each application table has RLS enabled, an explicit policy limited to that server role, and no grants to anon/authenticated. Existing Express authorization enforces student ownership and teacher permissions. Supabase Auth users are separate from the application's public.users table; Google sign-in remains outstanding.
 

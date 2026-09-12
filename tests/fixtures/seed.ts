@@ -44,7 +44,7 @@ export async function seed() {
           : null,
       status: i === 4 ? "pending" : "active",
       avatar: "",
-      interests: '["Mathematics","Physics","Computer Science"]',
+      interests: '["English","UHV"]',
       onboarding: 1,
       created_at: t - (20 - i * 3) * 86400000,
       updated_at: t,
@@ -52,13 +52,13 @@ export async function seed() {
     });
   }
   const subjects = [
-    ["math", "Mathematics", "Find beauty in the patterns.", "math"],
-    ["physics", "Physics", "Make sense of the world around you.", "physics"],
-    ["cs", "Computer Science", "Turn your ideas into possibilities.", "code"],
-    ["chem", "Chemistry", "Discover a world of reactions.", "chemistry"],
-    ["bio", "Biology", "Explore the science of being alive.", "biology"],
     ["english", "English", "Find your voice. Share your ideas.", "english"],
-    ["programming", "Programming", "Build something that matters.", "code"],
+    [
+      "uhv",
+      "UHV (Universal Human Values)",
+      "Learn with purpose, respect, and responsibility.",
+      "biology",
+    ],
   ];
   for (const [key, name, description, thumbnail] of subjects)
     await insert("content", {
@@ -73,62 +73,50 @@ export async function seed() {
       created_at: t,
       updated_at: t,
     });
-  const courses = [
+  const chapters = [
     [
       "algebra",
-      "math",
-      "Algebra, made simple",
-      "Build a confident foundation, one equation at a time.",
-      "math",
+      "english",
+      "Grammar foundations",
+      "Build a confident foundation in written English.",
+      "english",
     ],
     [
       "motion",
-      "physics",
-      "The science of motion",
-      "A fresh perspective on the forces that move our world.",
-      "physics",
+      "uhv",
+      "Understanding harmony",
+      "Explore harmony within ourselves and our relationships.",
+      "biology",
     ],
     [
       "python",
-      "cs",
-      "Your first lines of Python",
-      "From a blank screen to your first working program.",
-      "code",
+      "english",
+      "Communication skills",
+      "Express ideas with clarity and confidence.",
+      "english",
     ],
     [
       "organic",
-      "chem",
-      "The elements of chemistry",
-      "Small building blocks. Extraordinary possibilities.",
-      "chemistry",
+      "uhv",
+      "Values in daily life",
+      "Connect values with choices and responsible action.",
+      "biology",
     ],
     [
       "calculus",
-      "math",
-      "A new angle on calculus",
-      "Explore change, slopes, and the world of derivatives.",
-      "math",
+      "english",
+      "Reading and comprehension",
+      "Read closely, understand context, and respond thoughtfully.",
+      "english",
     ],
   ];
-  for (const [key, parent, name, description, thumbnail] of courses) {
+  for (const [key, parent, name, description, thumbnail] of chapters) {
     await insert("content", {
       id: key,
-      kind: "course",
+      kind: "chapter",
       parent_id: parent,
       name,
       description,
-      thumbnail,
-      status: "published",
-      public: 1,
-      created_at: t,
-      updated_at: t,
-    });
-    await insert("content", {
-      id: `${key}-chapter`,
-      kind: "chapter",
-      parent_id: key,
-      name: "The foundations",
-      description: "Start here and build your understanding.",
       thumbnail,
       status: "published",
       public: 0,
@@ -138,7 +126,7 @@ export async function seed() {
     await insert("content", {
       id: `${key}-topic`,
       kind: "topic",
-      parent_id: `${key}-chapter`,
+      parent_id: key,
       name: "Getting started",
       description: "Your first lightbulb moments.",
       thumbnail,
@@ -181,8 +169,8 @@ export async function seed() {
         kind: "video",
         parent_id: `${key}-topic`,
         name: titles[i],
-        description: `A focused lesson in ${courses.find((c) => c[0] === key)![2].toLowerCase()}. Learn the key ideas, follow a worked example, and take a moment to practice.`,
-        thumbnail: courses.find((c) => c[0] === key)![4],
+        description: `A focused lesson in ${chapters.find((c) => c[0] === key)![2].toLowerCase()}. Learn the key ideas, follow an example, and take a moment to practice.`,
+        thumbnail: chapters.find((c) => c[0] === key)![4],
         status: "published",
         public: 0,
         duration: 90,
@@ -252,7 +240,7 @@ export async function seed() {
   await insert("announcements", {
     id: id(),
     title: "A fresh week, a little more possibility",
-    body: "Your new Physics lessons are ready. Start with Understanding velocity and bring your questions to our next class. You’ve got this!",
+    body: "Your new English and UHV lessons are ready. Bring your questions to our next class. You’ve got this!",
     created_at: t - 3600000,
   });
   await insert("announcements", {

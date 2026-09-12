@@ -82,7 +82,7 @@ export default function TeacherSetup() {
           <p>
             {data.complete
               ? "The first teacher account has already been created. Additional teachers are added by the account owner."
-              : "Create your owner account. You can then add teachers, build courses, and welcome students."}
+              : "Create your owner account. You can then add teachers, build subjects, and welcome students."}
           </p>
           {data.complete ? (
             <Link className="button full" to="/auth/admin">

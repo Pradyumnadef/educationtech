@@ -128,8 +128,8 @@ test("authorization graph: nested grants, direct revocations, draft and future p
   const user = { id: "s", role: "student", status: "active" },
     nodes = [
       { id: "subject", parent_id: null, status: "published" },
-      { id: "course", parent_id: "subject", status: "published" },
-      { id: "video", parent_id: "course", status: "published" },
+      { id: "chapter", parent_id: "subject", status: "published" },
+      { id: "video", parent_id: "chapter", status: "published" },
     ],
     ctx = {
       user,
@@ -143,7 +143,7 @@ test("authorization graph: nested grants, direct revocations, draft and future p
         ...ctx,
         grants: [
           ...ctx.grants,
-          { user_id: "s", content_id: "course", status: "revoked" },
+          { user_id: "s", content_id: "chapter", status: "revoked" },
         ],
       },
       "video",
@@ -155,7 +155,7 @@ test("authorization graph: nested grants, direct revocations, draft and future p
       {
         ...ctx,
         nodes: nodes.map((n) =>
-          n.id === "course" ? { ...n, status: "draft" } : n,
+          n.id === "chapter" ? { ...n, status: "draft" } : n,
         ),
       },
       "video",
@@ -167,7 +167,7 @@ test("authorization graph: nested grants, direct revocations, draft and future p
       {
         ...ctx,
         nodes: nodes.map((n) =>
-          n.id === "course" ? { ...n, publish_at: Date.now() + 60000 } : n,
+          n.id === "chapter" ? { ...n, publish_at: Date.now() + 60000 } : n,
         ),
       },
       "video",
@@ -428,37 +428,96 @@ test("timed assignments enforce targeting, private document uploads, and submiss
   assert.equal(unsafeLink.status, 400);
   const learning = await request("/learning", "GET", undefined, student);
   assert.ok(learning.data.assignments.some((a: any) => a.id === assignmentId));
-  assert.equal((await request(`/assignments/${assignmentId}/start`, "POST")).status, 401);
-  const started = await request(`/assignments/${assignmentId}/start`, "POST", {}, student);
+  assert.equal(
+    (await request(`/assignments/${assignmentId}/start`, "POST")).status,
+    401,
+  );
+  const started = await request(
+    `/assignments/${assignmentId}/start`,
+    "POST",
+    {},
+    student,
+  );
   assert.equal(started.status, 200);
-  assert.ok(started.data.effective_deadline <= started.data.started_at + 30 * 60000);
-  const startedAgain = await request(`/assignments/${assignmentId}/start`, "POST", {}, student);
+  assert.ok(
+    started.data.effective_deadline <= started.data.started_at + 30 * 60000,
+  );
+  const startedAgain = await request(
+    `/assignments/${assignmentId}/start`,
+    "POST",
+    {},
+    student,
+  );
   assert.equal(startedAgain.data.started_at, started.data.started_at);
   assert.equal(
-    (await request("/storage/prepare", "POST", { filename: "answer.mp4", mime: "video/mp4", size: 10, purpose: "submission" }, student)).status,
+    (
+      await request(
+        "/storage/prepare",
+        "POST",
+        {
+          filename: "answer.mp4",
+          mime: "video/mp4",
+          size: 10,
+          purpose: "submission",
+        },
+        student,
+      )
+    ).status,
     400,
   );
   assert.equal(
-    (await request("/storage/prepare", "POST", { filename: "lesson.pdf", mime: "application/pdf", size: 10, purpose: "content" }, student)).status,
+    (
+      await request(
+        "/storage/prepare",
+        "POST",
+        {
+          filename: "lesson.pdf",
+          mime: "application/pdf",
+          size: 10,
+          purpose: "content",
+        },
+        student,
+      )
+    ).status,
     403,
   );
-  const bytes = new TextEncoder().encode("%PDF-1.4\nEnglish Tech assignment answer");
+  const bytes = new TextEncoder().encode(
+    "%PDF-1.4\nEnglish Tech assignment answer",
+  );
   const prepared = await request(
     "/storage/prepare",
     "POST",
-    { filename: "answer.pdf", mime: "application/pdf", size: bytes.length, purpose: "submission" },
+    {
+      filename: "answer.pdf",
+      mime: "application/pdf",
+      size: bytes.length,
+      purpose: "submission",
+    },
     student,
   );
   assert.equal(prepared.status, 200, JSON.stringify(prepared.data));
   const form = new FormData();
-  form.append("file", new Blob([bytes], { type: "application/pdf" }), "answer.pdf");
+  form.append(
+    "file",
+    new Blob([bytes], { type: "application/pdf" }),
+    "answer.pdf",
+  );
   const uploaded = await fetch(origin + prepared.data.url, {
     method: "POST",
-    headers: { Origin: origin, Cookie: student.cookie, "X-CSRF-Token": student.csrf },
+    headers: {
+      Origin: origin,
+      Cookie: student.cookie,
+      "X-CSRF-Token": student.csrf,
+    },
     body: form,
   });
   assert.equal(uploaded.status, 200, await uploaded.text());
-  const completed = await request(`/storage/complete/${prepared.data.id}`, "POST", {}, student);
+  const completed = await request(
+    `/storage/complete/${prepared.data.id}`,
+    "POST",
+    {},
+    student,
+  );
   assert.equal(completed.status, 200);
   const submitted = await request(
     `/assignments/${assignmentId}/submit`,
@@ -468,23 +527,55 @@ test("timed assignments enforce targeting, private document uploads, and submiss
   );
   assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
   const after = await request("/learning", "GET", undefined, student);
-  const assignment = after.data.assignments.find((a: any) => a.id === assignmentId);
+  const assignment = after.data.assignments.find(
+    (a: any) => a.id === assignmentId,
+  );
   assert.equal(assignment.submission.note, "My completed work");
   assert.equal(assignment.submission.files[0].filename, "answer.pdf");
   assert.equal(
-    (await request(`/storage/submission/${assignment.submission.id}/file/${prepared.data.id}`)).status,
+    (
+      await request(
+        `/storage/submission/${assignment.submission.id}/file/${prepared.data.id}`,
+      )
+    ).status,
     401,
   );
-  const privateFile = await fetch(origin + `/api/storage/submission/${assignment.submission.id}/file/${prepared.data.id}`, {
-    headers: { Cookie: student.cookie },
-  });
+  const privateFile = await fetch(
+    origin +
+      `/api/storage/submission/${assignment.submission.id}/file/${prepared.data.id}`,
+    {
+      headers: { Cookie: student.cookie },
+    },
+  );
   assert.equal(privateFile.status, 200);
-  await request(`/admin/coursework/${assignmentId}`, "PATCH", { status: "published", dueAt: 1 }, teacher);
+  await request(
+    `/admin/coursework/${assignmentId}`,
+    "PATCH",
+    { status: "published", dueAt: 1 },
+    teacher,
+  );
   assert.equal(
-    (await request(`/assignments/${assignmentId}/submit`, "POST", { uploadIds: [prepared.data.id] }, student)).status,
+    (
+      await request(
+        `/assignments/${assignmentId}/submit`,
+        "POST",
+        { uploadIds: [prepared.data.id] },
+        student,
+      )
+    ).status,
     409,
   );
-  assert.equal((await request(`/admin/coursework/${assignmentId}`, "DELETE", undefined, teacher)).status, 200);
+  assert.equal(
+    (
+      await request(
+        `/admin/coursework/${assignmentId}`,
+        "DELETE",
+        undefined,
+        teacher,
+      )
+    ).status,
+    200,
+  );
 });
 test("full hierarchy CRUD rejects invalid parents and hides drafts", async () => {
   const s = await request(
@@ -508,7 +599,7 @@ test("full hierarchy CRUD rejects invalid parents and hides drafts", async () =>
   assert.equal(wrong.status, 400);
   let parent = s.data.id;
   let videoId = "";
-  for (const kind of ["course", "chapter", "topic", "video"]) {
+  for (const kind of ["chapter", "topic", "video"]) {
     const r = await request(
       "/admin/content",
       "POST",
