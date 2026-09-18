@@ -146,7 +146,7 @@ export default function Landing() {
           >
             <img
               className="scene-art hero-brand-art"
-              src="/assets/english-tech-brand-light.jpg"
+              src="/assets/english-tech-brand-transparent.png"
               alt="English Tech educator and learning logo"
               fetchPriority="high"
             />
