@@ -36,7 +36,7 @@ const studentNav = [
   ["", "Overview", Home],
   ["assignments", "Assignments", ClipboardList],
   ["subjects", "My subjects", Shapes],
-  ["videos", "My videos", Play],
+  ["videos", "Learning materials", Play],
   ["progress", "My progress", ChartNoAxesCombined],
 ] as const;
 const adminNav = [
