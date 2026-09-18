@@ -149,7 +149,7 @@ export default function Landing() {
             </div>
             <img
               className="scene-art hero-brand-art"
-              src="/assets/english-tech-brand.jpg"
+              src="/assets/english-tech-brand-light.jpg"
               alt="English Tech educator and learning logo"
               fetchPriority="high"
             />

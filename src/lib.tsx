@@ -195,7 +195,7 @@ export function Logo({ light = false }: { light?: boolean }) {
     >
       <img
         className="logo-brand-image"
-        src="/assets/english-tech-brand.jpg"
+        src="/assets/english-tech-brand-light.jpg"
         alt=""
       />
       {platform?.name || "English Tech"}
