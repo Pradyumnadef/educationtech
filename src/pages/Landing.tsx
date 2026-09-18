@@ -139,29 +139,6 @@ export default function Landing() {
               follow your curiosity,
               <br className="desktop" /> and become a little more you.
             </p>
-            <div className="hero-actions">
-              <Link to="/auth/signup" className="button">
-                Find your next chapter <ArrowUpRight size={18} />
-              </Link>
-              <a className="text-button" href="#subjects">
-                <span className="round-play">
-                  <Play size={14} fill="currentColor" />
-                </span>{" "}
-                Explore the possibilities
-              </a>
-            </div>
-            <div className="hero-proof">
-              <div className="avatar-stack">
-                <span>AM</span>
-                <span>PS</span>
-                <span>JW</span>
-                <span>SR</span>
-              </div>
-              <div>
-                <b>Different minds. Shared curiosity.</b>
-                <p>A learning space for every kind of learner.</p>
-              </div>
-            </div>
           </div>
           <div
             className="hero-scene"
