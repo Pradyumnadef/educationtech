@@ -4366,6 +4366,59 @@ td b {
   .bottom-cta h2 {
     font-size: 29px;
   }
+  .landing > footer {
+    padding: 8px 22px 0;
+  }
+  .footer-main {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 30px 24px;
+    padding-bottom: 30px;
+  }
+  .footer-main > div:first-child,
+  .footer-main .footer-note {
+    grid-column: 1 / -1;
+  }
+  .footer-main > div:first-child {
+    padding-bottom: 24px;
+    border-bottom: 1px solid #e4e7dc;
+  }
+  .footer-main .logo {
+    font-size: 26px;
+  }
+  .footer-main .logo-brand-image {
+    width: 34px;
+    height: 34px;
+    flex-basis: 34px;
+  }
+  .footer-main p {
+    margin-top: 12px;
+  }
+  .footer-main > div > b {
+    margin-bottom: 14px;
+  }
+  .footer-main > div > a:not(.logo),
+  .footer-main button {
+    margin: 0;
+    padding: 7px 0;
+    line-height: 1.45;
+  }
+  .footer-main .footer-note {
+    justify-content: flex-start;
+    padding: 17px 18px;
+    border-radius: 13px;
+    background: #f1f4e9;
+  }
+  .footer-main .footer-note p {
+    margin: 0;
+  }
+  .footer-bottom {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 20px 0 24px;
+    font-size: 8px;
+    line-height: 1.5;
+  }
   .workspace-header {
     gap: 10px;
   }
