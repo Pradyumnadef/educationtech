@@ -103,6 +103,6 @@ socialAuth.get('/google/callback', async (req, res) => {
     }
     await createSession(res, user);
     await audit(user.id, state.action === 'link' ? 'google.link' : 'google.login', user.id);
-    res.redirect(user.role === 'admin' ? '/admin' : user.onboarding ? '/app' : '/onboarding');
+    res.redirect(user.role === 'admin' || user.onboarding ? '/?signedIn=1' : '/onboarding');
   } catch { return fail(); }
 });

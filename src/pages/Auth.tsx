@@ -10,6 +10,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import { Logo, Field, Button, useAuth, useToast, post, useData } from "../lib";
+import { resumePath } from "../session";
 export default function Auth() {
   const { mode } = useParams();
   const isAdmin = mode === "admin",
@@ -94,13 +95,7 @@ export default function Auth() {
       toast(
         `Welcome${r.user.onboarding ? " back" : ""}, ${r.user.name.split(" ")[0]}!`,
       );
-      navigate(
-        r.user.role === "admin"
-          ? "/admin"
-          : r.user.onboarding
-            ? "/app"
-            : "/onboarding",
-      );
+      navigate(resumePath(r.user), { replace: true });
     } catch (e: any) {
       setError(e.message);
     } finally {

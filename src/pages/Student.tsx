@@ -643,14 +643,24 @@ function Watch({
   data: any;
   refresh: () => void;
 }) {
-  const { data: lesson, error, loading } = useData(`/videos/${videoId}`),
+  const { user } = useAuth(),
+    { data: lesson, error, loading } = useData(`/videos/${videoId}`),
     ref = useRef<HTMLVideoElement>(null),
     toast = useToast(),
     [tab, setTab] = useState("notes"),
     [denied, setDenied] = useState(""),
     [speed, setSpeed] = useState("1");
   const lastTime = useRef(0),
-    lastSave = useRef(Date.now());
+    lastSave = useRef(Date.now()),
+    lastLocalSave = useRef(0);
+  const positionKey = `english-tech:video-position:${user.id}:${videoId}`;
+  const rememberPosition = (position: number, complete = false) => {
+    try {
+      if (complete) localStorage.removeItem(positionKey);
+      else if (Number.isFinite(position) && position > 0)
+        localStorage.setItem(positionKey, String(position));
+    } catch {}
+  };
   const items: Item[] = data.content;
   const related = items.filter(
       (i) =>
@@ -660,6 +670,7 @@ function Watch({
   const save = async (complete = false) => {
     const v = ref.current;
     if (!v || !Number.isFinite(v.currentTime)) return;
+    rememberPosition(v.currentTime, complete);
     const elapsed = (Date.now() - lastSave.current) / 1000;
     lastSave.current = Date.now();
     const delta = Math.max(
@@ -686,6 +697,7 @@ function Watch({
     setDenied("");
     lastTime.current = 0;
     lastSave.current = Date.now();
+    lastLocalSave.current = 0;
     const timer = setInterval(() => {
       if (ref.current && !ref.current.paused) save();
     }, 10000);
@@ -714,13 +726,23 @@ function Watch({
                 onContextMenu={(e) => e.preventDefault()}
                 onLoadedMetadata={() => {
                   if (ref.current) {
+                    let localPosition = 0;
+                    try {
+                      localPosition = Number(localStorage.getItem(positionKey)) || 0;
+                    } catch {}
                     ref.current.currentTime = Math.min(
-                      lesson.progress?.position || 0,
+                      Math.max(lesson.progress?.position || 0, localPosition),
                       Math.max(0, ref.current.duration - 1),
                     );
                     lastTime.current = ref.current.currentTime;
                     ref.current.playbackRate = Number(speed);
                   }
+                }}
+                onTimeUpdate={() => {
+                  const video = ref.current;
+                  if (!video || Date.now() - lastLocalSave.current < 1000) return;
+                  lastLocalSave.current = Date.now();
+                  rememberPosition(video.currentTime);
                 }}
                 onPause={() => save()}
                 onEnded={() => {

@@ -6,6 +6,17 @@ import {
 } from "node:crypto";
 import type { Request, Response, NextFunction } from "express";
 import { one, run, insert, id, now, production, query } from "./db.ts";
+const SESSION_DURATION_MS = 1000 * 60 * 60 * 24 * 400;
+const SESSION_RENEW_WINDOW_MS = 1000 * 60 * 60 * 24 * 30;
+function sessionCookie(res: Response, token: string) {
+  res.cookie("lumio_session", token, {
+    httpOnly: true,
+    secure: production,
+    sameSite: "lax",
+    maxAge: SESSION_DURATION_MS,
+    path: "/",
+  });
+}
 export function hash(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -41,6 +52,15 @@ export async function session(req: Request, res: Response, next: NextFunction) {
         if (u?.status === "active") {
           (req as any).user = u;
           (req as any).session = s;
+          if (Number(s.expires_at) - now() < SESSION_RENEW_WINDOW_MS) {
+            const expiresAt = now() + SESSION_DURATION_MS;
+            await run("UPDATE sessions SET expires_at=? WHERE id=?", [
+              expiresAt,
+              s.id,
+            ]);
+            (req as any).session.expires_at = expiresAt;
+            sessionCookie(res, token);
+          }
         }
       }
     }
@@ -83,15 +103,9 @@ export async function createSession(res: Response, user: any) {
     user_id: user.id,
     token_hash: hash(token),
     csrf,
-    expires_at: now() + 1000 * 60 * 60 * 24 * 7,
+    expires_at: now() + SESSION_DURATION_MS,
   });
-  res.cookie("lumio_session", token, {
-    httpOnly: true,
-    secure: production,
-    sameSite: "lax",
-    maxAge: 604800000,
-    path: "/",
-  });
+  sessionCookie(res, token);
   await run("UPDATE users SET last_active=? WHERE id=?", [now(), user.id]);
   return { user: safeUser(user), csrf };
 }

@@ -8,6 +8,7 @@ import {
   useLocation,
 } from "react-router-dom";
 import { AuthProvider, ToastProvider, useAuth, Loading, Failure } from "./lib";
+import { rememberWorkspaceRoute, resumePath } from "./session";
 import Landing from "./pages/Landing";
 import "./styles.css";
 const TeacherSetup = lazy(() => import("./pages/TeacherSetup"));
@@ -56,8 +57,19 @@ function Guard({
   if (!admin && user.role === "admin") return <Navigate to="/admin" replace />;
   return children;
 }
+function Home() {
+  const { user, loading } = useAuth();
+  if (loading || !user) return <Landing />;
+  return <Navigate to={resumePath(user)} replace />;
+}
+function GuestOnly({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) return <Loading />;
+  return user ? <Navigate to={resumePath(user)} replace /> : children;
+}
 function App() {
   const location = useLocation();
+  const { user } = useAuth();
   React.useEffect(() => {
     window.scrollTo(0, 0);
     document.title = location.pathname.startsWith("/admin")
@@ -66,13 +78,23 @@ function App() {
         ? "Your learning space · English Tech"
         : "English Tech — A brighter way to learn";
   }, [location.pathname]);
+  React.useEffect(() => {
+    rememberWorkspaceRoute(user, location.pathname, location.search);
+  }, [user, location.pathname, location.search]);
   return (
     <ErrorBoundary>
       <Suspense fallback={<Loading />}>
         <Routes>
-          <Route path="/" element={<Landing />} />
+          <Route path="/" element={<Home />} />
           <Route path="/auth/setup" element={<TeacherSetup />} />
-          <Route path="/auth/:mode" element={<Auth />} />
+          <Route
+            path="/auth/:mode"
+            element={
+              <GuestOnly>
+                <Auth />
+              </GuestOnly>
+            }
+          />
           <Route
             path="/onboarding"
             element={

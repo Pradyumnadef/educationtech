@@ -89,9 +89,9 @@ test('An authenticated teacher can explicitly link Google and sign in again', as
   const redirect=new URL(new URL(r.data.url).searchParams.get('redirect_to')!);
   const callback='/google/callback?flow='+redirect.searchParams.get('flow')+'&code=provider-code';
   const linked=await request(callback,undefined,cookie+'; '+r.cookie);
-  assert.equal(linked.response.headers.get('location'),'/admin');
+  assert.equal(linked.response.headers.get('location'),'/?signedIn=1');
   const again=await start('login');
-  assert.equal((await request(again.callback,undefined,again.cookie)).response.headers.get('location'),'/admin');
+  assert.equal((await request(again.callback,undefined,again.cookie)).response.headers.get('location'),'/?signedIn=1');
 });
 test('Expired Google flows cannot create a session',async()=> {
   email='expired@example.test'; const r=await start();
