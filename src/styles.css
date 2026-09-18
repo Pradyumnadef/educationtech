@@ -205,6 +205,14 @@ a:focus-visible {
   margin-left: -10px;
   color: #8da376;
 }
+.logo-brand-image {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 2px 8px #17382a24;
+}
 .logo-symbol {
   position: relative;
   display: block;
@@ -869,6 +877,11 @@ a:focus-visible {
 .scene-art {
   width: 100%;
   display: block;
+}
+.hero-brand-art {
+  aspect-ratio: 1;
+  object-fit: contain;
+  border-radius: 24px;
 }
 .scene-label {
   position: absolute;

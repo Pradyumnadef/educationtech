@@ -147,99 +147,12 @@ export default function Landing() {
             <div className="scene-label">
               <Sparkles size={15} /> YOUR NEXT LIGHTBULB MOMENT
             </div>
-            <svg className="scene-art" viewBox="0 0 600 500" aria-hidden="true">
-              <defs>
-                <pattern
-                  id="dots"
-                  width="18"
-                  height="18"
-                  patternUnits="userSpaceOnUse"
-                >
-                  <circle cx="1" cy="1" r="1" fill="#9ba986" opacity=".28" />
-                </pattern>
-              </defs>
-              <path
-                d="M50 465V223C50 74 141 18 301 18s250 62 250 205v242"
-                fill="#e7ecd9"
-              />
-              <path
-                d="M80 460V235C80 106 148 48 301 48s220 60 220 187v225"
-                fill="url(#dots)"
-              />
-              <circle
-                cx="302"
-                cy="221"
-                r="133"
-                fill="none"
-                stroke="#a5b293"
-                strokeDasharray="6 8"
-              />
-              <ellipse
-                cx="300"
-                cy="429"
-                rx="190"
-                ry="24"
-                fill="#c5ceae"
-                opacity=".45"
-              />
-              <path d="M220 382l-67-208 198-50 63 211z" fill="#244d3e" />
-              <path d="M229 369l-60-181 180-46 56 181z" fill="#dce5be" />
-              <path
-                d="M169 188l87 42 93-88m-93 88 56 158"
-                fill="none"
-                stroke="#8d9d6c"
-                strokeWidth="2"
-              />
-              <path
-                d="M202 209l41 19m-36-4 40 19m-35-3 40 19m-34-3 40 19m-34-4 40 19"
-                stroke="#7b8f64"
-                strokeWidth="2"
-              />
-              <path
-                d="M272 230l59-47m-55 62 60-48m-56 63 61-49m-56 64 61-49"
-                stroke="#7b8f64"
-                strokeWidth="2"
-              />
-              <path d="M148 386h247v34H148z" fill="#a287ad" />
-              <path d="M165 391h224v22H165" fill="#f8f3e9" />
-              <path d="M177 374h253v29H177z" fill="#e1b36f" />
-              <path d="M190 378h233v18H190" fill="#fcf6e7" />
-              <path d="M370 340l-21-116" stroke="#46694c" strokeWidth="5" />
-              <path
-                d="M359 277q-60-9-52-51 56 5 52 51m1 15q60-47 69-6-38 33-69 6m-6-44q37-67 59-33-17 33-59 33"
-                fill="#81996a"
-              />
-              <path d="M352 343h47l-8 40h-33z" fill="#b68e6a" />
-              <path
-                d="M375 87c-42 0-57 47-28 73 9 8 12 18 12 24h32c0-8 3-17 12-26 31-29 13-71-28-71z"
-                fill="#f3d786"
-                stroke="#b29d61"
-                strokeWidth="2"
-              />
-              <path
-                d="M359 191h32m-30 7h28m-25 7h21m-10-22v-39l-10-12m10 12 10-12"
-                stroke="#8a865c"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-              <path
-                d="M375 64v-13m58 51 12-6m-131 6-12-6m110-23 8-10m-81 10-8-10"
-                stroke="#bca665"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-              <path
-                d="M118 290l10 19 21 4-15 15 2 21-19-10-19 9 4-21-15-15 22-3z"
-                fill="#e8c881"
-              />
-              <circle cx="458" cy="356" r="9" fill="#9aaeca" />
-              <path
-                d="M114 122v22m-11-11h22M466 214v18m-9-9h18"
-                stroke="#a08da8"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-            </svg>
+            <img
+              className="scene-art hero-brand-art"
+              src="/assets/english-tech-brand.jpg"
+              alt="English Tech educator and learning logo"
+              fetchPriority="high"
+            />
             <div className="floating-card fc-one">
               <span className="float-icon">
                 <Check size={19} />

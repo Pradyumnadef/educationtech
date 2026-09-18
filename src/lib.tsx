@@ -193,12 +193,11 @@ export function Logo({ light = false }: { light?: boolean }) {
       className={`logo ${light ? "light" : ""}`}
       aria-label={`${platform?.name || "English Tech"} home`}
     >
-      <span className="logo-symbol">
-        <i />
-        <i />
-        <i />
-        <i />
-      </span>
+      <img
+        className="logo-brand-image"
+        src="/assets/english-tech-brand.jpg"
+        alt=""
+      />
       {platform?.name || "English Tech"}
       <span className="logo-period">.</span>
     </Link>
