@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowRight,
@@ -54,9 +54,22 @@ export default function Landing() {
     [faq, setFaq] = useState(0),
     [contact, setContact] = useState(false),
     [busy, setBusy] = useState(false);
+  const studentAccessMenu = useRef<HTMLDetailsElement>(null);
   const toast = useToast();
   const { data } = useData<any[]>("/catalog");
   const subjects = (data || []).filter((n) => n.kind === "subject").slice(0, 4);
+  useEffect(() => {
+    const closeStudentAccessMenu = (event: PointerEvent) => {
+      if (
+        studentAccessMenu.current &&
+        !studentAccessMenu.current.contains(event.target as Node)
+      )
+        studentAccessMenu.current.removeAttribute("open");
+    };
+    document.addEventListener("pointerdown", closeStudentAccessMenu);
+    return () =>
+      document.removeEventListener("pointerdown", closeStudentAccessMenu);
+  }, []);
   return (
     <div className="landing">
       <nav className="public-nav">
@@ -74,7 +87,7 @@ export default function Landing() {
           <button onClick={() => setContact(true)}>Contact</button>
         </div>
         <div className="nav-actions">
-          <details className="student-access-menu">
+          <details className="student-access-menu" ref={studentAccessMenu}>
             <summary className="sign-in">
               Sign in <ArrowUpRight size={15} />
             </summary>
