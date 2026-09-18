@@ -694,6 +694,54 @@ a:focus-visible {
   gap: 6px;
   font-weight: 550;
 }
+.student-access-menu {
+  position: relative;
+}
+.student-access-menu > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.student-access-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.student-access-menu[open] > summary,
+.student-access-menu > summary:hover {
+  color: #244d3e;
+}
+.student-access-options {
+  position: absolute;
+  top: calc(100% + 14px);
+  right: 0;
+  z-index: 120;
+  width: 250px;
+  overflow: hidden;
+  padding: 7px;
+  background: #fffef8;
+  border: 1px solid #dfe6d3;
+  border-radius: 14px;
+  box-shadow: 0 18px 45px #274b2624;
+  animation: rise 0.18s ease both;
+}
+.student-access-options a {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 13px;
+  border-radius: 9px;
+}
+.student-access-options a:hover,
+.student-access-options a:focus-visible {
+  background: #eef2e7;
+  outline: none;
+}
+.student-access-options strong {
+  color: #244d3e;
+  font-size: 13px;
+}
+.student-access-options span {
+  color: #7a8272;
+  font-size: 11px;
+}
 .hero {
   max-width: 1280px;
   margin: 28px auto 45px;

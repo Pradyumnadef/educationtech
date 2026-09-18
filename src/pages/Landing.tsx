@@ -74,9 +74,21 @@ export default function Landing() {
           <button onClick={() => setContact(true)}>Contact</button>
         </div>
         <div className="nav-actions">
-          <Link className="sign-in" to="/auth/login">
-            Sign in <ArrowUpRight size={15} />
-          </Link>
+          <details className="student-access-menu">
+            <summary className="sign-in">
+              Sign in <ArrowUpRight size={15} />
+            </summary>
+            <div className="student-access-options">
+              <Link to="/auth/login">
+                <strong>Existing Student</strong>
+                <span>Sign in to your account</span>
+              </Link>
+              <Link to="/auth/signup">
+                <strong>New Student Registration</strong>
+                <span>Create a new account</span>
+              </Link>
+            </div>
+          </details>
           <Link className="button small" to="/auth/signup">
             Start learning <ArrowRight size={16} />
           </Link>
