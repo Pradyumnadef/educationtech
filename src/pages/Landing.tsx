@@ -144,9 +144,6 @@ export default function Landing() {
             className="hero-scene"
             aria-label="An illustrated world of books, ideas, and learning"
           >
-            <div className="scene-label">
-              <Sparkles size={15} /> YOUR NEXT LIGHTBULB MOMENT
-            </div>
             <img
               className="scene-art hero-brand-art"
               src="/assets/english-tech-brand-light.jpg"
