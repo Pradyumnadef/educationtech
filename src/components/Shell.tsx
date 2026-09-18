@@ -8,9 +8,7 @@ import {
   Bell,
   User,
   Users,
-  Layers,
-  FolderOpen,
-  Video,
+  FileText,
   KeyRound,
   Megaphone,
   Settings,
@@ -46,10 +44,8 @@ const adminNav = [
   ["students", "Students", Users],
   ["teachers", "Teachers", GraduationCap],
   ["groups", "Student groups", GraduationCap],
-  ["subjects", "Subjects", Shapes],
-  ["chapters", "Chapters", Layers],
-  ["topics", "Topics", FolderOpen],
-  ["videos", "Videos", Video],
+  ["library", "Subjects & topics", Shapes],
+  ["materials", "Learning materials", FileText],
   ["assignments", "Assignments", ClipboardList],
   ["access", "Content access", KeyRound],
   ["analytics", "Analytics", ChartNoAxesCombined],
@@ -267,7 +263,11 @@ export default function Shell({
                 onClick={() => setResults(null)}
                 to={
                   admin
-                    ? `/admin/${r.kind === "student" ? "students" : r.kind + "s"}?q=${encodeURIComponent(r.name)}`
+                    ? r.kind === "student"
+                      ? `/admin/students?q=${encodeURIComponent(r.name)}`
+                      : r.kind === "video"
+                        ? `/admin/materials?q=${encodeURIComponent(r.name)}`
+                        : `/admin/library?type=${r.kind}&q=${encodeURIComponent(r.name)}`
                     : r.kind === "video"
                       ? `/app/watch/${r.id}`
                       : `/app/subjects/${r.id}`

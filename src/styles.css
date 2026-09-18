@@ -601,6 +601,9 @@ a:focus-visible {
   font-weight: 600;
   border-color: #5d7a48;
 }
+.content-structure-tabs {
+  margin-top: -10px;
+}
 .search-box {
   display: flex;
   align-items: center;

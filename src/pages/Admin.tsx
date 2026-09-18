@@ -72,11 +72,20 @@ export default function Admin() {
   else if (route === "students")
     body = <Students key={location.search} data={data} refresh={refresh} />;
   else if (route === "groups") body = <Groups data={data} refresh={refresh} />;
-  else if (["subjects", "chapters", "topics", "videos"].includes(route))
+  else if (["library", "subjects", "chapters", "topics"].includes(route))
+    body = (
+      <ContentLibrary
+        key={route + location.search}
+        initialKind={route === "library" ? undefined : route.slice(0, -1)}
+        data={data}
+        refresh={refresh}
+      />
+    );
+  else if (["materials", "videos"].includes(route))
     body = (
       <Content
         key={route + location.search}
-        kind={route.slice(0, -1)}
+        kind="video"
         data={data}
         refresh={refresh}
       />
@@ -128,7 +137,7 @@ function Overview({ data }: { data: any }) {
         title="Good things are growing."
         description="A fresh perspective on your students and their learning journeys."
       >
-        <Link className="button" to="/admin/videos">
+        <Link className="button" to="/admin/materials">
           <Plus size={17} /> Add a lesson
         </Link>
       </Heading>
@@ -211,13 +220,13 @@ function Overview({ data }: { data: any }) {
       </div>
       <div className="section-heading compact">
         <h2>Recently added lessons</h2>
-        <Link to="/admin/videos">
+        <Link to="/admin/materials">
           Manage library <ArrowUpRight size={15} />
         </Link>
       </div>
       <div className="grid three">
         {videos.slice(0, 3).map((v: Item) => (
-          <Link className="admin-video-card" to="/admin/videos" key={v.id}>
+          <Link className="admin-video-card" to="/admin/materials" key={v.id}>
             <CourseArt theme={v.thumbnail} />
             <div>
               <span className={`status ${v.status}`}>{v.status}</span>
@@ -865,7 +874,31 @@ function Groups({ data, refresh }: any) {
 function ArrowRightIcon() {
   return <ArrowUpRight size={16} />;
 }
-function Content({ kind, data, refresh }: any) {
+function ContentLibrary({ initialKind, data, refresh }: any) {
+  const requestedKind = new URLSearchParams(useLocation().search).get("type");
+  const [kind, setKind] = useState(
+    ["subject", "chapter", "topic"].includes(requestedKind || "")
+      ? requestedKind
+      : initialKind || "subject",
+  );
+  return (
+    <Content
+      key={kind}
+      kind={kind}
+      data={data}
+      refresh={refresh}
+      merged
+      onKindChange={setKind}
+    />
+  );
+}
+function Content({
+  kind,
+  data,
+  refresh,
+  merged = false,
+  onKindChange,
+}: any) {
   const [q, setQ] = useState(
       new URLSearchParams(useLocation().search).get("q") || "",
     ),
@@ -875,6 +908,8 @@ function Content({ kind, data, refresh }: any) {
     [confirm, setConfirm] = useState<Item | null>(null),
     toast = useToast();
   const debounced = useDebounced(q);
+  const itemLabel = kind === "video" ? "learning material" : kind;
+  const pluralLabel = kind === "video" ? "learning materials" : `${kind}s`;
   const rows = data.content.filter(
     (c: Item) =>
       c.kind === kind &&
@@ -887,20 +922,46 @@ function Content({ kind, data, refresh }: any) {
     <>
       <Heading
         title={
-          kind === "video"
-            ? "A library of lightbulb moments."
+          merged
+            ? "Subjects, chapters, and topics."
+            : kind === "video"
+              ? "Learning materials, all in one place."
             : `Make room for ${kind === "subject" ? "curiosity" : "the next chapter"}.`
         }
         description={
-          kind === "subject"
+          merged
+            ? "Build your curriculum in one section, from broad subjects to focused learning topics."
+            : kind === "video"
+              ? "Manage lesson videos, captions, downloadable files, notes, and publishing details."
+            : kind === "subject"
             ? "English and UHV are ready. Add any new subject here whenever you need it."
             : `Organize your ${kind}s into thoughtful, connected learning experiences.`
         }
       >
         <Button onClick={() => setEditor({ kind })}>
-          <Plus size={17} /> Add {kind}
+          <Plus size={17} /> Add {itemLabel}
         </Button>
       </Heading>
+      {merged && (
+        <div
+          className="tabs content-structure-tabs"
+          role="tablist"
+          aria-label="Content type"
+        >
+          {["subject", "chapter", "topic"].map((type) => (
+            <button
+              type="button"
+              role="tab"
+              className={kind === type ? "active" : ""}
+              aria-selected={kind === type}
+              onClick={() => onKindChange(type)}
+              key={type}
+            >
+              {type[0].toUpperCase() + type.slice(1)}s
+            </button>
+          ))}
+        </div>
+      )}
       <div className="table-toolbar">
         <label className="search-box">
           <Search size={17} />
@@ -910,8 +971,8 @@ function Content({ kind, data, refresh }: any) {
               setQ(e.target.value);
               setPage(1);
             }}
-            placeholder={`Search ${kind}s…`}
-            aria-label={`Search ${kind}s`}
+            placeholder={`Search ${pluralLabel}…`}
+            aria-label={`Search ${pluralLabel}`}
           />
         </label>
         <select
@@ -927,14 +988,14 @@ function Content({ kind, data, refresh }: any) {
           <option value="draft">Draft</option>
         </select>
         <span>
-          {rows.length} {kind}s
+          {rows.length} {pluralLabel}
         </span>
       </div>
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>{kind === "video" ? "Lesson" : "Name"}</th>
+              <th>{kind === "video" ? "Learning material" : "Name"}</th>
               <th>Located in</th>
               <th>Status</th>
               <th>{kind === "video" ? "Duration" : "Contents"}</th>
@@ -1016,7 +1077,7 @@ function Content({ kind, data, refresh }: any) {
         {!rows.length && (
           <Empty
             title="A blank page, full of possibility"
-            description={`Add a ${kind} to begin building your learning library.`}
+            description={`Add a ${itemLabel} to begin building your learning library.`}
           />
         )}
       </div>
@@ -1065,6 +1126,8 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
     [progress, setProgress] = useState(0),
     [scan, setScan] = useState<any>(null),
     toast = useToast();
+  const kindLabel =
+    form.kind === "video" ? "learning material" : form.kind;
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
   const parentKind: Record<string, string> = {
     chapter: "subject",
@@ -1104,7 +1167,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
   }
   return (
     <Modal
-      title={`${item.id ? "Edit" : "Create"} ${form.kind}`}
+      title={`${item.id ? "Edit" : "Create"} ${kindLabel}`}
       onClose={onClose}
       wide
     >
@@ -1127,7 +1190,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
             refresh();
             onClose();
             toast(
-              `${form.kind[0].toUpperCase() + form.kind.slice(1)} saved to your library.`,
+              `${kindLabel[0].toUpperCase() + kindLabel.slice(1)} saved to your library.`,
             );
           } catch (e: any) {
             toast(e.message, "error");
@@ -1405,7 +1468,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
             Cancel
           </Button>
           <Button type="submit" busy={busy} disabled={!!uploading}>
-            <Check size={16} /> Save {form.kind}
+            <Check size={16} /> Save {kindLabel}
           </Button>
         </div>
       </form>
