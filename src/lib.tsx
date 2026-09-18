@@ -246,13 +246,18 @@ export function Modal({
   children,
   onClose,
   wide = false,
+  canClose = true,
 }: {
   title: string;
   children: React.ReactNode;
   onClose: () => void;
   wide?: boolean;
+  canClose?: boolean;
 }) {
   const ref = React.useRef<HTMLDialogElement>(null);
+  const requestClose = () => {
+    if (canClose) onClose();
+  };
   useEffect(() => {
     ref.current?.showModal();
     const previous = document.body.style.overflow;
@@ -265,16 +270,29 @@ export function Modal({
     <dialog
       ref={ref}
       className={`modal ${wide ? "wide" : ""}`}
-      onCancel={onClose}
+      onCancel={(e) => {
+        e.preventDefault();
+        requestClose();
+      }}
       onClick={(e) => {
-        if (e.target === ref.current) onClose();
+        const dialog = ref.current;
+        if (!dialog || e.target !== dialog) return;
+        const rect = dialog.getBoundingClientRect();
+        const outside =
+          e.clientX < rect.left ||
+          e.clientX > rect.right ||
+          e.clientY < rect.top ||
+          e.clientY > rect.bottom;
+        if (outside) requestClose();
       }}
     >
       <header>
         <h2>{title}</h2>
         <button
+          type="button"
           className="icon-button"
-          onClick={onClose}
+          onClick={requestClose}
+          disabled={!canClose}
           aria-label="Close dialog"
         >
           <X />

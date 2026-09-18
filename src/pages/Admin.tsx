@@ -1170,6 +1170,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
       title={`${item.id ? "Edit" : "Create"} ${kindLabel}`}
       onClose={onClose}
       wide
+      canClose={!busy && !uploading}
     >
       <form
         onSubmit={async (e) => {
@@ -1464,7 +1465,12 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
           />
         </Field>
         <div className="modal-actions">
-          <Button variant="secondary" type="button" onClick={onClose}>
+          <Button
+            variant="secondary"
+            type="button"
+            onClick={onClose}
+            disabled={busy || !!uploading}
+          >
             Cancel
           </Button>
           <Button type="submit" busy={busy} disabled={!!uploading}>
