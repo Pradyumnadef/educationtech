@@ -278,6 +278,93 @@ async function deliverDownload(row: any, req: any, res: any) {
   res.setHeader("Content-Length", statSync(localPath).size);
   return createReadStream(localPath).pipe(res);
 }
+async function deliverPreview(row: any, req: any, res: any, attachment = false) {
+  const key = row.storage_key;
+  const safeName = row.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Content-Type", row.mime);
+  res.setHeader("Accept-Ranges", "bytes");
+  res.setHeader(
+    "Content-Disposition",
+    `${attachment ? "attachment" : "inline"}; filename="${safeName}"`,
+  );
+  const range = req.headers.range;
+  if (range && !/^bytes=\d+-\d*$/.test(range)) return res.sendStatus(416);
+  if (bucket && process.env.CDN_DOMAIN && !key.startsWith("local/")) {
+    const privateKey = Buffer.from(
+      process.env.CDN_PRIVATE_KEY_BASE64 || "",
+      "base64",
+    ).toString("utf8");
+    const signed = signCdnUrl({
+      url: `https://${process.env.CDN_DOMAIN}/${key.split("/").map(encodeURIComponent).join("/")}`,
+      keyPairId: process.env.CDN_KEY_PAIR_ID!,
+      privateKey,
+      dateLessThan: new Date(Date.now() + 60000).toISOString(),
+    });
+    const controller = new AbortController();
+    res.on("close", () => controller.abort());
+    const response = await fetch(signed, {
+      headers: range ? { Range: range } : {},
+      signal: controller.signal,
+      redirect: "error",
+    });
+    if (!response.ok || !response.body)
+      return res
+        .status(response.status === 416 ? 416 : 502)
+        .json({ error: "File delivery is temporarily unavailable." });
+    res.status(response.status);
+    for (const h of ["content-length", "content-range"]) {
+      const value = response.headers.get(h);
+      if (value) res.setHeader(h, value);
+    }
+    const stream = Readable.fromWeb(response.body as any);
+    stream.on("error", () => res.destroy());
+    stream.pipe(res);
+    return;
+  }
+  if (bucket && !key.startsWith("local/")) {
+    const out = await s3.send(
+      new GetObjectCommand({ Bucket: bucket, Key: key, Range: range }),
+    );
+    if (out.ContentRange) {
+      res.status(206);
+      res.setHeader("Content-Range", out.ContentRange);
+    }
+    if (out.ContentLength) res.setHeader("Content-Length", out.ContentLength);
+    const stream = out.Body as Readable;
+    res.on("close", () => stream.destroy());
+    stream.on("error", () => res.destroy());
+    stream.pipe(res);
+    return;
+  }
+  const localPath = path.join(mediaDir, row.id);
+  const size = statSync(localPath).size;
+  let start = 0;
+  let end = size - 1;
+  if (range) {
+    const parts = range.slice(6).split("-");
+    start = Number(parts[0]);
+    end = parts[1] ? Math.min(Number(parts[1]), size - 1) : size - 1;
+    if (start >= size || start > end) {
+      res.setHeader("Content-Range", `bytes */${size}`);
+      return res.sendStatus(416);
+    }
+    res.status(206);
+    res.setHeader("Content-Range", `bytes ${start}-${end}/${size}`);
+  }
+  res.setHeader("Content-Length", end - start + 1);
+  const stream = createReadStream(localPath, { start, end });
+  res.on("close", () => stream.destroy());
+  stream.on("error", () => res.destroy());
+  stream.pipe(res);
+}
+storageRoutes.get("/preview/:id", auth, admin, async (req, res) => {
+  const row = await one("SELECT * FROM uploads WHERE id=? AND state='ready'", [
+    req.params.id,
+  ]);
+  if (!row) return res.status(404).json({ error: "File not found or still processing." });
+  await deliverPreview(row, req, res);
+});
 storageRoutes.get("/assignment/:assignmentId/resource/:uploadId", auth, async (req, res) => {
   const user = (req as any).user;
   if (user.role !== "admin") {
@@ -356,81 +443,5 @@ storageRoutes.get("/media/:id/:type", auth, async (req, res) => {
   }, 2000);
   res.on("close", () => clearInterval(check));
   res.on("finish", () => clearInterval(check));
-  res.setHeader("Cache-Control", "private, no-store");
-  res.setHeader("Content-Type", row.mime);
-  res.setHeader("Accept-Ranges", "bytes");
-  if (type === "resource")
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${row.filename.replace(/[^a-zA-Z0-9._-]/g, "_")}"`,
-    );
-  const range = req.headers.range;
-  if (range && !/^bytes=\d+-\d*$/.test(range)) return res.sendStatus(416);
-  if (bucket && process.env.CDN_DOMAIN && !key.startsWith("local/")) {
-    const privateKey = Buffer.from(
-      process.env.CDN_PRIVATE_KEY_BASE64 || "",
-      "base64",
-    ).toString("utf8");
-    const signed = signCdnUrl({
-      url: `https://${process.env.CDN_DOMAIN}/${key.split("/").map(encodeURIComponent).join("/")}`,
-      keyPairId: process.env.CDN_KEY_PAIR_ID!,
-      privateKey,
-      dateLessThan: new Date(Date.now() + 60000).toISOString(),
-    });
-    const controller = new AbortController();
-    res.on("close", () => controller.abort());
-    const response = await fetch(signed, {
-      headers: range ? { Range: range } : {},
-      signal: controller.signal,
-      redirect: "error",
-    });
-    if (!response.ok || !response.body)
-      return res
-        .status(response.status === 416 ? 416 : 502)
-        .json({ error: "Video delivery is temporarily unavailable." });
-    res.status(response.status);
-    for (const h of ["content-length", "content-range"]) {
-      const value = response.headers.get(h);
-      if (value) res.setHeader(h, value);
-    }
-    const stream = Readable.fromWeb(response.body as any);
-    stream.on("error", () => res.destroy());
-    stream.pipe(res);
-    return;
-  }
-  if (bucket && !key.startsWith("local/")) {
-    const out = await s3.send(
-      new GetObjectCommand({ Bucket: bucket, Key: key, Range: range }),
-    );
-    if (out.ContentRange) {
-      res.status(206);
-      res.setHeader("Content-Range", out.ContentRange);
-    }
-    if (out.ContentLength) res.setHeader("Content-Length", out.ContentLength);
-    const stream = out.Body as Readable;
-    res.on("close", () => stream.destroy());
-    stream.on("error", () => res.destroy());
-    stream.pipe(res);
-    return;
-  }
-  const localPath = path.join(mediaDir, row.id);
-  const size = statSync(localPath).size;
-  let start = 0,
-    end = size - 1;
-  if (range) {
-    const p = range.slice(6).split("-");
-    start = Number(p[0]);
-    end = p[1] ? Math.min(Number(p[1]), size - 1) : size - 1;
-    if (start >= size || start > end) {
-      res.setHeader("Content-Range", `bytes */${size}`);
-      return res.sendStatus(416);
-    }
-    res.status(206);
-    res.setHeader("Content-Range", `bytes ${start}-${end}/${size}`);
-  }
-  res.setHeader("Content-Length", end - start + 1);
-  const stream = createReadStream(localPath, { start, end });
-  res.on("close", () => stream.destroy());
-  stream.on("error", () => res.destroy());
-  stream.pipe(res);
+  await deliverPreview(row, req, res, type === "resource");
 });

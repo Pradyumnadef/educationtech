@@ -1125,6 +1125,9 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
     [uploading, setUploading] = useState(""),
     [progress, setProgress] = useState(0),
     [scan, setScan] = useState<any>(null),
+    [uploadedFiles, setUploadedFiles] = useState<Record<string, any>>(
+      item.uploaded_files || {},
+    ),
     toast = useToast();
   const kindLabel =
     form.kind === "video" ? "learning material" : form.kind;
@@ -1144,6 +1147,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
       const out = await uploadFile(file, setProgress);
       if (out.state === "ready") {
         set(field, out.key);
+        setUploadedFiles((current) => ({ ...current, [field]: out }));
         toast("File uploaded and ready.");
       } else {
         setScan({ ...out, field });
@@ -1354,6 +1358,30 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
                 />
               </label>
             </div>
+            {uploadedFiles.storage_key && (
+              <div className="material-preview">
+                <div className="material-preview-heading">
+                  <div className="uploaded-file-icon">
+                    <FileVideo size={19} />
+                  </div>
+                  <div className="uploaded-file-meta">
+                    <strong>{uploadedFiles.storage_key.filename}</strong>
+                    <span>
+                      {formatFileSize(uploadedFiles.storage_key.size)} · Ready
+                      to view
+                    </span>
+                  </div>
+                  <span className="file-ready"><Check size={13} /> Uploaded</span>
+                </div>
+                <video
+                  controls
+                  preload="metadata"
+                  src={`/api/storage/preview/${uploadedFiles.storage_key.id}`}
+                >
+                  Your browser does not support video playback.
+                </video>
+              </div>
+            )}
             {uploading && (
               <div role="status">
                 <div className="progress-track">
@@ -1376,6 +1404,14 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
                       const r = await api(`/storage/status/${scan.id}`);
                       if (r.state === "ready") {
                         set(scan.field, r.storage_key);
+                        setUploadedFiles((current) => ({
+                          ...current,
+                          [scan.field]: {
+                            ...scan,
+                            key: r.storage_key,
+                            state: "ready",
+                          },
+                        }));
                         setScan(null);
                         toast("Security scan complete. File attached.");
                       } else if (r.state === "rejected") {
@@ -1411,23 +1447,49 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
                       upload(e.target.files[0], "caption_key");
                   }}
                 />
+                {uploadedFiles.caption_key && (
+                  <UploadedFile
+                    file={uploadedFiles.caption_key}
+                    label="Captions"
+                    onRemove={() => {
+                      set("caption_key", "");
+                      setUploadedFiles((current) => ({
+                        ...current,
+                        caption_key: null,
+                      }));
+                    }}
+                  />
+                )}
               </Field>
               <Field
                 label={
                   form.resource_key
-                    ? "Resource attached · Replace PDF"
-                    : "Lesson resource (PDF, up to 25 MB)"
+                    ? "Resource attached · Replace file"
+                    : "Lesson resource (PDF, Word, Excel, PowerPoint, text, or CSV)"
                 }
               >
                 <input
                   type="file"
-                  accept="application/pdf"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
                   disabled={!!uploading}
                   onChange={(e) => {
                     if (e.target.files?.[0])
                       upload(e.target.files[0], "resource_key");
                   }}
                 />
+                {uploadedFiles.resource_key && (
+                  <UploadedFile
+                    file={uploadedFiles.resource_key}
+                    label="Lesson resource"
+                    onRemove={() => {
+                      set("resource_key", "");
+                      setUploadedFiles((current) => ({
+                        ...current,
+                        resource_key: null,
+                      }));
+                    }}
+                  />
+                )}
               </Field>
             </div>
             <Field label="Lesson notes">
@@ -1479,6 +1541,42 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
         </div>
       </form>
     </Modal>
+  );
+}
+function formatFileSize(size: number) {
+  if (!Number.isFinite(Number(size))) return "File";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 ** 2) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 ** 2).toFixed(1)} MB`;
+}
+function UploadedFile({ file, label, onRemove }: any) {
+  return (
+    <div className="uploaded-file-row">
+      <div className="uploaded-file-icon">
+        <FileText size={17} />
+      </div>
+      <div className="uploaded-file-meta">
+        <strong>{file.filename}</strong>
+        <span>{label} · {formatFileSize(file.size)}</span>
+      </div>
+      <a
+        className="file-action"
+        href={`/api/storage/preview/${file.id}`}
+        target="_blank"
+        rel="noreferrer"
+      >
+        <Eye size={14} /> View
+      </a>
+      <button
+        className="icon-button file-remove"
+        type="button"
+        aria-label={`Remove ${file.filename}`}
+        title="Remove attachment"
+        onClick={onRemove}
+      >
+        <X size={14} />
+      </button>
+    </div>
   );
 }
 function Coursework({ data, refresh }: any) {

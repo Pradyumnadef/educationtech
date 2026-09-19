@@ -751,6 +751,32 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
     ).status,
     200,
   );
+  const saved = (
+    await request("/admin/content/python-4", "GET", undefined, teacher)
+  ).data;
+  assert.equal(saved.uploaded_files.storage_key.id, prep.data.id);
+  assert.equal(
+    saved.uploaded_files.storage_key.filename,
+    "format-fixture.mp4",
+  );
+  const preview = await fetch(
+    origin + `/api/storage/preview/${prep.data.id}`,
+    { headers: { Cookie: teacher.cookie, Range: "bytes=0-7" } },
+  );
+  assert.equal(preview.status, 206);
+  assert.equal(preview.headers.get("content-range"), "bytes 0-7/64");
+  assert.equal((await preview.arrayBuffer()).byteLength, 8);
+  assert.equal(
+    (
+      await request(
+        `/storage/preview/${prep.data.id}`,
+        "GET",
+        undefined,
+        student,
+      )
+    ).status,
+    403,
+  );
   const r = await fetch(origin + "/api/storage/media/python-4/video", {
     headers: { Cookie: student.cookie, Range: "bytes=0-15" },
   });

@@ -555,14 +555,19 @@ async function validateContent(b: any, recordId?: string) {
   for (const [field, mime] of [
     ["storage_key", "video/"],
     ["caption_key", "text/vtt"],
-    ["resource_key", "application/pdf"],
+    ["resource_key", "document"],
   ])
     if (b[field]) {
       const upload = await one(
         "SELECT mime FROM uploads WHERE storage_key=? AND state='ready'",
         [b[field]],
       );
-      if (!upload || !upload.mime.startsWith(mime))
+      const valid =
+        upload &&
+        (mime === "document"
+          ? documentMimes.has(upload.mime)
+          : upload.mime.startsWith(mime));
+      if (!valid)
         bad(
           "An attached file is missing, invalid, or awaiting security scanning.",
         );
@@ -578,7 +583,25 @@ async function validateContent(b: any, recordId?: string) {
 api.get("/admin/content/:id", async (req, res) => {
   const item = await one("SELECT * FROM content WHERE id=?", [req.params.id]);
   if (!item) bad("Content not found.", 404);
-  res.json({ ...item, tags: JSON.parse(item.tags) });
+  const fileFields = ["storage_key", "caption_key", "resource_key"].filter(
+    (field) => item[field],
+  );
+  const uploadedFiles = Object.fromEntries(
+    await Promise.all(
+      fileFields.map(async (field) => [
+        field,
+        await one(
+          "SELECT id,filename,mime,size,state FROM uploads WHERE storage_key=?",
+          [item[field]],
+        ),
+      ]),
+    ),
+  );
+  res.json({
+    ...item,
+    tags: JSON.parse(item.tags),
+    uploaded_files: uploadedFiles,
+  });
 });
 api.post("/admin/content", async (req, res) => {
   const b = contentSchema.parse(req.body);

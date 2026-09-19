@@ -764,5 +764,11 @@ export async function uploadFile(
     }
   });
   const result = await post(`/storage/complete/${p.id}`);
-  return { ...result, id: p.id };
+  return {
+    ...result,
+    id: p.id,
+    filename: file.name,
+    mime,
+    size: file.size,
+  };
 }
