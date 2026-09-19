@@ -195,8 +195,11 @@ export function Logo({ light = false }: { light?: boolean }) {
     >
       <img
         className="logo-brand-image"
-        src="/assets/english-tech-brand-transparent.png"
+        src="/assets/english-tech-brand-mark.webp"
         alt=""
+        width="96"
+        height="96"
+        decoding="async"
       />
       {platform?.name || "English Tech"}
       <span className="logo-period">.</span>

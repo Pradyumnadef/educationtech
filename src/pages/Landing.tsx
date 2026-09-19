@@ -146,9 +146,12 @@ export default function Landing() {
           >
             <img
               className="scene-art hero-brand-art"
-              src="/assets/english-tech-brand-transparent.png"
+              src="/assets/english-tech-brand-hero.webp"
               alt="English Tech educator and learning logo"
+              width="700"
+              height="700"
               fetchPriority="high"
+              decoding="async"
             />
             <div className="floating-card fc-one">
               <span className="float-icon">
