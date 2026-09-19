@@ -576,6 +576,17 @@ test("timed assignments enforce targeting, private document uploads, and submiss
     ).status,
     200,
   );
+  assert.equal(
+    (
+      await request(
+        `/storage/preview/${prepared.data.id}`,
+        "GET",
+        undefined,
+        teacher,
+      )
+    ).status,
+    404,
+  );
 });
 test("full hierarchy CRUD rejects invalid parents and hides drafts", async () => {
   const s = await request(
@@ -667,12 +678,7 @@ test("progress is owned by session and watch time is bounded by real elapsed tim
 });
 test("upload validation rejects unsafe formats, size violations, and forged media", async () => {
   assert.equal((await request("/storage/limits")).status, 401);
-  const limits = await request(
-    "/storage/limits",
-    "GET",
-    undefined,
-    teacher,
-  );
+  const limits = await request("/storage/limits", "GET", undefined, teacher);
   assert.equal(limits.status, 200);
   assert.equal(limits.data.video, 2 * 1024 ** 3);
   assert.equal(
@@ -761,14 +767,10 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
     await request("/admin/content/python-4", "GET", undefined, teacher)
   ).data;
   assert.equal(saved.uploaded_files.storage_key.id, prep.data.id);
-  assert.equal(
-    saved.uploaded_files.storage_key.filename,
-    "format-fixture.mp4",
-  );
-  const preview = await fetch(
-    origin + `/api/storage/preview/${prep.data.id}`,
-    { headers: { Cookie: teacher.cookie, Range: "bytes=0-7" } },
-  );
+  assert.equal(saved.uploaded_files.storage_key.filename, "format-fixture.mp4");
+  const preview = await fetch(origin + `/api/storage/preview/${prep.data.id}`, {
+    headers: { Cookie: teacher.cookie, Range: "bytes=0-7" },
+  });
   assert.equal(preview.status, 206);
   assert.equal(preview.headers.get("content-range"), "bytes 0-7/64");
   assert.equal((await preview.arrayBuffer()).byteLength, 8);
@@ -790,6 +792,28 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
   assert.equal(r.headers.get("content-range"), "bytes 0-15/64");
   assert.equal((await r.arrayBuffer()).byteLength, 16);
   assert.equal((await request("/storage/media/python-4/video")).status, 401);
+  assert.equal(
+    (
+      await request(
+        "/admin/content/python-4",
+        "PUT",
+        { ...saved, storage_key: "", uploaded_files: undefined },
+        teacher,
+      )
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await request(
+        `/storage/preview/${prep.data.id}`,
+        "GET",
+        undefined,
+        teacher,
+      )
+    ).status,
+    404,
+  );
 });
 test("announcements persist, students mark their own notifications read", async () => {
   const a = await request(

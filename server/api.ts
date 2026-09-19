@@ -11,6 +11,7 @@ import {
   audit,
   throttle,
 } from "./security.ts";
+import { cleanupUploadsIfUnreferenced } from "./storage.ts";
 export const api = Router();
 const uid = (req: any) => req.user.id;
 const text = z.string().trim().min(1).max(200);
@@ -248,6 +249,10 @@ api.post("/assignments/:id/submit", async (req, res) => {
       bad("A submission file is invalid or still processing.");
     files.push(upload);
   }
+  const previousFiles = await query(
+    "SELECT upload_id FROM submission_files WHERE submission_id=?",
+    [submission.id],
+  );
   await run("DELETE FROM submission_files WHERE submission_id=?", [
     submission.id,
   ]);
@@ -268,7 +273,10 @@ api.post("/assignments/:id/submit", async (req, res) => {
     submission.id,
   );
   await audit(uid(req), "assignment.submit", assignment.id);
-  res.json({ ok: true });
+  const cleanupPending = await cleanupUploadsIfUnreferenced(
+    previousFiles.map((file: any) => file.upload_id),
+  );
+  res.json({ ok: true, cleanupPending });
 });
 api.get("/search", async (req, res) => {
   const q = z
@@ -618,7 +626,7 @@ api.post("/admin/content", async (req, res) => {
 });
 api.put("/admin/content/:id", async (req, res) => {
   const b = contentSchema.parse(req.body);
-  const existing = await one("SELECT kind FROM content WHERE id=?", [
+  const existing = await one("SELECT * FROM content WHERE id=?", [
     req.params.id,
   ]);
   if (!existing) bad("Content not found.", 404);
@@ -630,12 +638,61 @@ api.put("/admin/content/:id", async (req, res) => {
     req.params.id as string,
   );
   await audit(uid(req), "content.update", req.params.id as string, b.name);
-  res.json({ ok: true });
+  const replacedKeys = ["storage_key", "caption_key", "resource_key"]
+    .filter(
+      (field) =>
+        existing[field] && existing[field] !== b[field as keyof typeof b],
+    )
+    .map((field) => existing[field]);
+  const replacedUploads = await Promise.all(
+    replacedKeys.map((key) =>
+      one("SELECT id FROM uploads WHERE storage_key=?", [key]),
+    ),
+  );
+  const cleanupPending = await cleanupUploadsIfUnreferenced(
+    replacedUploads.filter(Boolean).map((upload: any) => upload.id),
+  );
+  res.json({ ok: true, cleanupPending });
 });
 api.delete("/admin/content/:id", async (req, res) => {
+  const allContent = await query(
+    "SELECT id,parent_id,storage_key,caption_key,resource_key FROM content",
+  );
+  if (!allContent.some((item: any) => item.id === req.params.id))
+    bad("Content not found.", 404);
+  const deletedIds = new Set<string>([req.params.id as string]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const item of allContent)
+      if (
+        item.parent_id &&
+        deletedIds.has(item.parent_id) &&
+        !deletedIds.has(item.id)
+      ) {
+        deletedIds.add(item.id);
+        changed = true;
+      }
+  }
+  const deletedKeys = allContent
+    .filter((item: any) => deletedIds.has(item.id))
+    .flatMap((item: any) => [
+      item.storage_key,
+      item.caption_key,
+      item.resource_key,
+    ])
+    .filter(Boolean);
+  const deletedUploads = await Promise.all(
+    deletedKeys.map((key: string) =>
+      one("SELECT id FROM uploads WHERE storage_key=?", [key]),
+    ),
+  );
   await run("DELETE FROM content WHERE id=?", [req.params.id]);
   await audit(uid(req), "content.delete", req.params.id as string);
-  res.json({ ok: true });
+  const cleanupPending = await cleanupUploadsIfUnreferenced(
+    deletedUploads.filter(Boolean).map((upload: any) => upload.id),
+  );
+  res.json({ ok: true, cleanupPending });
 });
 api.post("/admin/groups", async (req, res) => {
   const b = z
@@ -857,9 +914,20 @@ api.delete("/admin/coursework/:id", async (req, res) => {
     [req.params.id],
   );
   if (!assignment) bad("Assignment not found.", 404);
+  const attachedUploads = await query(
+    `SELECT upload_id FROM assignment_resources WHERE assignment_id=?
+     UNION
+     SELECT f.upload_id FROM submission_files f
+     JOIN assignment_submissions s ON s.id=f.submission_id
+     WHERE s.assignment_id=?`,
+    [assignment.id, assignment.id],
+  );
   await run("DELETE FROM learning_assignments WHERE id=?", [assignment.id]);
   await audit(uid(req), "coursework.delete", assignment.id);
-  res.json({ ok: true });
+  const cleanupPending = await cleanupUploadsIfUnreferenced(
+    attachedUploads.map((upload: any) => upload.upload_id),
+  );
+  res.json({ ok: true, cleanupPending });
 });
 api.post("/admin/announcements", async (req, res) => {
   const b = z
