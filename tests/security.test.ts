@@ -666,6 +666,15 @@ test("progress is owned by session and watch time is bounded by real elapsed tim
   assert.equal(next.completed, 1);
 });
 test("upload validation rejects unsafe formats, size violations, and forged media", async () => {
+  assert.equal((await request("/storage/limits")).status, 401);
+  const limits = await request(
+    "/storage/limits",
+    "GET",
+    undefined,
+    teacher,
+  );
+  assert.equal(limits.status, 200);
+  assert.equal(limits.data.video, 2 * 1024 ** 3);
   assert.equal(
     (
       await request(
@@ -677,17 +686,14 @@ test("upload validation rejects unsafe formats, size violations, and forged medi
     ).status,
     400,
   );
-  assert.equal(
-    (
-      await request(
-        "/storage/prepare",
-        "POST",
-        { filename: "x.mp4", mime: "video/mp4", size: 3 * 1024 ** 3 },
-        teacher,
-      )
-    ).status,
-    400,
+  const oversized = await request(
+    "/storage/prepare",
+    "POST",
+    { filename: "x.mp4", mime: "video/mp4", size: 3 * 1024 ** 3 },
+    teacher,
   );
+  assert.equal(oversized.status, 400);
+  assert.match(oversized.data.error, /up to 2048 MB/);
   const prep = await request(
     "/storage/prepare",
     "POST",

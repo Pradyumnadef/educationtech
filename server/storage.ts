@@ -33,10 +33,17 @@ const s3 = new S3Client({
   endpoint: process.env.S3_ENDPOINT || undefined,
   forcePathStyle: !!process.env.S3_ENDPOINT,
 });
+const defaultVideoLimitMb = production ? 50 : 2048;
+const configuredVideoLimitMb = Number(process.env.VIDEO_UPLOAD_MAX_MB);
+const videoLimitMb =
+  Number.isFinite(configuredVideoLimitMb) && configuredVideoLimitMb > 0
+    ? Math.min(configuredVideoLimitMb, 2048)
+    : defaultVideoLimitMb;
+const videoLimit = Math.floor(videoLimitMb * 1024 ** 2);
 const formats: Record<string, number> = {
-  "video/mp4": 2 * 1024 ** 3,
-  "video/webm": 2 * 1024 ** 3,
-  "video/quicktime": 2 * 1024 ** 3,
+  "video/mp4": videoLimit,
+  "video/webm": videoLimit,
+  "video/quicktime": videoLimit,
   "image/png": 5 * 1024 ** 2,
   "image/jpeg": 5 * 1024 ** 2,
   "image/webp": 5 * 1024 ** 2,
@@ -62,6 +69,9 @@ const documentFormats = new Set([
   "text/plain",
   "text/csv",
 ]);
+storageRoutes.get("/limits", auth, (_req, res) => {
+  res.json({ video: videoLimit });
+});
 storageRoutes.post("/prepare", auth, async (req, res) => {
   const b = z
     .object({
@@ -78,10 +88,16 @@ storageRoutes.post("/prepare", auth, async (req, res) => {
     return res.status(400).json({ error: "Choose a PDF, Word, Excel, PowerPoint, text, or CSV file." });
   if (b.purpose !== "content" && !documentFormats.has(b.mime))
     return res.status(400).json({ error: "Choose a supported document file." });
-  if (!formats[b.mime] || b.size > formats[b.mime])
+  if (!formats[b.mime])
     return res
       .status(400)
-      .json({ error: "Unsupported file format or file is too large." });
+      .json({ error: "This file format is not supported." });
+  if (b.size > formats[b.mime])
+    return res.status(400).json({
+      error: b.mime.startsWith("video/")
+        ? `This video is too large. The current storage plan allows up to ${videoLimitMb} MB per video.`
+        : "This file is larger than the allowed upload limit.",
+    });
   const uploadId = id(),
     key = `quarantine/${uploadId}`;
   await insert("uploads", {

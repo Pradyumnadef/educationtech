@@ -1105,6 +1105,7 @@ function Content({
   );
 }
 function ContentEditor({ item, data, onClose, refresh }: any) {
+  const { data: uploadLimits } = useData<any>("/storage/limits");
   const [form, setForm] = useState<any>({
       name: "",
       description: "",
@@ -1131,6 +1132,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
     toast = useToast();
   const kindLabel =
     form.kind === "video" ? "learning material" : form.kind;
+  const videoLimit = Number(uploadLimits?.video || 50 * 1024 ** 2);
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
   const parentKind: Record<string, string> = {
     chapter: "subject",
@@ -1141,6 +1143,13 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
     (c: Item) => c.kind === parentKind[form.kind],
   );
   async function upload(file: File, field: string) {
+    if (field === "storage_key" && file.size > videoLimit) {
+      toast(
+        `This video is too large. Your current storage plan allows up to ${formatUploadLimit(videoLimit)} per video.`,
+        "error",
+      );
+      return;
+    }
     setUploading(field);
     setProgress(0);
     try {
@@ -1342,7 +1351,10 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
                   ? "Video attached. Ready for a little discovery."
                   : "Give this lesson its video."}
               </h3>
-              <p>MP4, WebM, or MOV · Up to 2 GB · Private storage</p>
+              <p>
+                MP4, WebM, or MOV · Up to {formatUploadLimit(videoLimit)} ·
+                Private storage
+              </p>
               <label className="button secondary">
                 <Upload size={16} />
                 {form.storage_key ? "Replace video" : "Choose video"}
@@ -1352,8 +1364,9 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
                   hidden
                   disabled={!!uploading}
                   onChange={(e) => {
-                    if (e.target.files?.[0])
-                      upload(e.target.files[0], "storage_key");
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) upload(file, "storage_key");
                   }}
                 />
               </label>
@@ -1548,6 +1561,11 @@ function formatFileSize(size: number) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 ** 2) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / 1024 ** 2).toFixed(1)} MB`;
+}
+function formatUploadLimit(size: number) {
+  return size >= 1024 ** 3
+    ? `${Number((size / 1024 ** 3).toFixed(1))} GB`
+    : `${Math.round(size / 1024 ** 2)} MB`;
 }
 function UploadedFile({ file, label, onRemove }: any) {
   return (
