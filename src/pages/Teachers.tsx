@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Plus, ShieldCheck } from "lucide-react";
+import { Plus, ShieldCheck, Trash2 } from "lucide-react";
 import {
   useData,
   post,
   patch,
+  del,
   useToast,
   Button,
   Field,
@@ -19,6 +20,7 @@ export default function Teachers() {
   const toast = useToast();
   const [adding, setAdding] = useState(false),
     [selected, setSelected] = useState<any>(null),
+    [removing, setRemoving] = useState<any>(null),
     [busy, setBusy] = useState(false),
     [formError, setFormError] = useState("");
   if (loading) return <Loading />;
@@ -53,6 +55,20 @@ export default function Teachers() {
       setSelected(null);
       await refresh();
       toast("Teacher access updated.");
+    } catch (e: any) {
+      setFormError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function removeTeacher() {
+    setBusy(true);
+    setFormError("");
+    try {
+      await del(`/admin/teachers/${removing.id}`);
+      setRemoving(null);
+      await refresh();
+      toast("Teacher removed. Their learning materials remain available.");
     } catch (e: any) {
       setFormError(e.message);
     } finally {
@@ -110,15 +126,28 @@ export default function Teachers() {
                     {t.is_owner ? (
                       <span className="muted">Protected owner account</span>
                     ) : (
-                      <Button
-                        variant="secondary"
-                        onClick={() => {
-                          setFormError("");
-                          setSelected(t);
-                        }}
-                      >
-                        {t.status === "active" ? "Deactivate" : "Activate"}
-                      </Button>
+                      <div className="table-actions">
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            setFormError("");
+                            setSelected(t);
+                          }}
+                        >
+                          {t.status === "active" ? "Deactivate" : "Activate"}
+                        </Button>
+                        <button
+                          type="button"
+                          className="icon-button danger-text"
+                          aria-label={`Remove ${t.name}`}
+                          onClick={() => {
+                            setFormError("");
+                            setRemoving(t);
+                          }}
+                        >
+                          <Trash2 size={17} />
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -211,6 +240,38 @@ export default function Teachers() {
               Confirm{" "}
               {selected.status === "active" ? "deactivation" : "activation"}
             </Button>
+          </div>
+        </Modal>
+      )}
+      {removing && (
+        <Modal
+          title={`Remove ${removing.name}?`}
+          onClose={() => !busy && setRemoving(null)}
+          canClose={!busy}
+        >
+          <div className="teacher-form">
+            <p>
+              This permanently removes this teacher’s account and signs them
+              out. Their uploaded files and assignments will stay available
+              and transfer to the owner account.
+            </p>
+            {formError && (
+              <p className="form-error" role="alert">
+                {formError}
+              </p>
+            )}
+            <div className="modal-actions">
+              <Button
+                variant="secondary"
+                onClick={() => setRemoving(null)}
+                disabled={busy}
+              >
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={removeTeacher} busy={busy}>
+                Remove teacher
+              </Button>
+            </div>
           </div>
         </Modal>
       )}

@@ -165,3 +165,36 @@ teacherRoutes.patch("/admin/teachers/:id", async (req, res) => {
   );
   res.json({ ok: true });
 });
+teacherRoutes.delete("/admin/teachers/:id", async (req, res) => {
+  const teacher = await one(
+    "SELECT id,name,email FROM users WHERE id=? AND role='admin'",
+    [req.params.id],
+  );
+  if (!teacher) return res.status(404).json({ error: "Teacher not found." });
+  const owner = await one("SELECT user_id FROM platform_owner WHERE id=1");
+  if (!owner?.user_id)
+    return res.status(409).json({ error: "The account owner is unavailable." });
+  if (teacher.id === owner.user_id)
+    return res
+      .status(403)
+      .json({ error: "The protected owner account cannot be removed." });
+
+  // Keep shared learning material available after a teacher leaves. The user
+  // deletion then cascades through their sessions and linked identities.
+  await run("UPDATE uploads SET owner_id=? WHERE owner_id=?", [
+    owner.user_id,
+    teacher.id,
+  ]);
+  await run(
+    "UPDATE learning_assignments SET teacher_id=?,updated_at=? WHERE teacher_id=?",
+    [owner.user_id, now(), teacher.id],
+  );
+  await run("DELETE FROM users WHERE id=? AND role='admin'", [teacher.id]);
+  await audit(
+    (req as any).user.id,
+    "teacher.delete",
+    teacher.id,
+    JSON.stringify({ name: teacher.name, email: teacher.email }),
+  );
+  res.json({ ok: true });
+});

@@ -372,3 +372,90 @@ test("teacher can securely reset a forgotten password by email OTP", async () =>
     200,
   );
 });
+test("owner removes a teacher while preserving their assignments", async () => {
+  const removable = await request(
+    "/admin/teachers",
+    "POST",
+    {
+      name: "Leaving Teacher",
+      email: "leaving@example.test",
+      password,
+    },
+    owner,
+  );
+  assert.equal(removable.status, 201);
+  const login = await request("/auth/admin", "POST", {
+    email: "leaving@example.test",
+    password,
+  });
+  assert.equal(login.status, 200);
+  const removableClient = { cookie: login.cookie, csrf: login.data.csrf };
+  const students = (await request("/admin/overview", "GET", undefined, owner))
+    .data.students;
+  const assignment = await request(
+    "/admin/coursework",
+    "POST",
+    {
+      title: "Preserved assignment",
+      description: "This should stay available after the teacher is removed.",
+      quizUrl: "",
+      dueAt: Date.now() + 86400000,
+      timeLimitMinutes: 30,
+      status: "published",
+      targetType: "student",
+      targetIds: [students[0].id],
+      resourceUploadIds: [],
+    },
+    removableClient,
+  );
+  assert.equal(assignment.status, 200);
+  assert.equal(
+    (
+      await request(
+        `/admin/teachers/${ownerId}`,
+        "DELETE",
+        undefined,
+        owner,
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await request(
+        `/admin/teachers/${removable.data.id}`,
+        "DELETE",
+        undefined,
+        owner,
+      )
+    ).status,
+    200,
+  );
+  assert.equal(
+    (await request("/admin/overview", "GET", undefined, removableClient)).status,
+    401,
+  );
+  assert.equal(
+    (
+      await request("/auth/admin", "POST", {
+        email: "leaving@example.test",
+        password,
+      })
+    ).status,
+    401,
+  );
+  const assignments = await request("/admin/overview", "GET", undefined, owner);
+  assert.equal(
+    assignments.data.coursework.find(
+      (item: any) => item.id === assignment.data.id,
+    )
+      .teacher_id,
+    ownerId,
+  );
+  assert.equal(
+    (await request("/admin/teachers", "GET", undefined, owner)).data.some(
+      (item: any) => item.id === removable.data.id,
+    ),
+    false,
+  );
+});
