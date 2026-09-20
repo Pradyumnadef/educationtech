@@ -73,7 +73,7 @@ export default function Admin() {
   else if (route === "students")
     body = <Students key={location.search} data={data} refresh={refresh} />;
   else if (route === "groups") body = <Groups data={data} refresh={refresh} />;
-  else if (["library", "subjects", "chapters", "topics"].includes(route))
+  else if (["library", "subjects", "chapters"].includes(route))
     body = (
       <ContentLibrary
         key={route + location.search}
@@ -878,7 +878,7 @@ function ArrowRightIcon() {
 function ContentLibrary({ initialKind, data, refresh }: any) {
   const requestedKind = new URLSearchParams(useLocation().search).get("type");
   const [kind, setKind] = useState(
-    ["subject", "chapter", "topic"].includes(requestedKind || "")
+    ["subject", "chapter"].includes(requestedKind || "")
       ? requestedKind
       : initialKind || "subject",
   );
@@ -913,19 +913,27 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
         .includes(debounced.toLowerCase()) &&
       (status === "all" || c.status === status),
   );
+  const displayedParent = (item: Item) => {
+    const parent = data.content.find(
+      (node: Item) => node.id === item.parent_id,
+    );
+    return item.kind === "video" && parent?.kind === "topic"
+      ? data.content.find((node: Item) => node.id === parent.parent_id)
+      : parent;
+  };
   return (
     <>
       <Heading
         title={
           merged
-            ? "Subjects, modules, and chapters."
+            ? "Subjects and modules."
             : kind === "video"
               ? "Learning materials, all in one place."
               : `Make room for ${kind === "subject" ? "curiosity" : "the next chapter"}.`
         }
         description={
           merged
-            ? "Build a simple learning path: subject, module, chapter, then learning materials."
+            ? "Build a simple learning path: create a subject, add modules, then place learning materials inside each module."
             : kind === "video"
               ? "Manage lesson videos, captions, downloadable files, notes, and publishing details."
               : kind === "subject"
@@ -943,7 +951,7 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
           role="tablist"
           aria-label="Content type"
         >
-          {["subject", "chapter", "topic"].map((type) => (
+          {["subject", "chapter"].map((type) => (
             <button
               type="button"
               role="tab"
@@ -1026,10 +1034,7 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
                     </span>
                   </button>
                 </td>
-                <td>
-                  {data.content.find((n: Item) => n.id === c.parent_id)?.name ||
-                    "Your library"}
-                </td>
+                <td>{displayedParent(c)?.name || "Your library"}</td>
                 <td>
                   <span className={`status ${c.status}`}>
                     {c.publish_at && c.publish_at > Date.now()
@@ -1103,6 +1108,14 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
 }
 function ContentEditor({ item, data, onClose, refresh }: any) {
   const { data: uploadLimits } = useData<any>("/storage/limits");
+  const legacyParent = data.content.find(
+    (content: Item) =>
+      content.id === item.parent_id && content.kind === "topic",
+  );
+  const normalizedItem =
+    item.kind === "video" && legacyParent
+      ? { ...item, parent_id: legacyParent.parent_id }
+      : item;
   const [form, setForm] = useState<any>({
       name: "",
       description: "",
@@ -1117,7 +1130,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
       caption_key: "",
       resource_key: "",
       publish_at: null,
-      ...item,
+      ...normalizedItem,
     }),
     [busy, setBusy] = useState(false),
     [uploading, setUploading] = useState(""),
@@ -1133,7 +1146,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
   const parentKind: Record<string, string> = {
     chapter: "subject",
     topic: "chapter",
-    video: "topic",
+    video: "chapter",
   };
   const parents = data.content.filter(
     (c: Item) => c.kind === parentKind[form.kind],
@@ -2255,7 +2268,7 @@ function Assignments({ data, refresh }: any) {
                   setContentIds([]);
                 }}
               >
-                {["subject", "chapter", "topic", "video"].map((k) => (
+                {["subject", "chapter", "video"].map((k) => (
                   <option key={k} value={k}>
                     {contentKindLabel(k).replace(/^./, (c) => c.toUpperCase())}
                   </option>
@@ -2342,8 +2355,8 @@ function Assignments({ data, refresh }: any) {
               securely theirs.
             </h2>
             <p>
-              Assigning a subject, module, or chapter includes its published
-              lessons and future additions.
+              Assigning a subject or module includes its published learning
+              materials and future additions.
             </p>
             <p>
               Individual revocations override group access. Group revocations

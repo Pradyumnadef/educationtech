@@ -38,7 +38,7 @@ const faqs = [
   ],
   [
     "How do I get access to a subject?",
-    "Your teacher manages access to individual lessons, chapters, modules, or entire subjects. Selecting an interest helps them understand your goals, but does not automatically unlock a subject.",
+    "Your teacher manages access to individual lessons, modules, or entire subjects. Selecting an interest helps them understand your goals, but does not automatically unlock a subject.",
   ],
   [
     "Can I use English Tech on my phone?",

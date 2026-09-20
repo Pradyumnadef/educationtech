@@ -623,14 +623,11 @@ function SubjectDetail({ id, data }: { id: string; data: any }) {
       ) : (
         <>
           <div className="section-heading compact">
-            <h2>Your modules and chapters</h2>
-            <span className="muted">Open a chapter and start learning.</span>
+            <h2>Your modules</h2>
+            <span className="muted">Choose a lesson and start learning.</span>
           </div>
           <div className="subject-curriculum">
             {modules.map((module, moduleIndex) => {
-              const chapters = items.filter(
-                (item) => item.kind === "topic" && item.parent_id === module.id,
-              );
               const moduleVideos = descendants(module, items).filter(
                 (item) => item.kind === "video" && item.accessible,
               );
@@ -645,60 +642,25 @@ function SubjectDetail({ id, data }: { id: string; data: any }) {
                       {module.description && <p>{module.description}</p>}
                     </div>
                     <span className="module-count">
-                      {chapters.length}{" "}
-                      {chapters.length === 1 ? "chapter" : "chapters"}
-                      {" · "}
                       {moduleVideos.length}{" "}
                       {moduleVideos.length === 1 ? "lesson" : "lessons"}
                     </span>
                   </header>
-                  <div className="module-chapters">
-                    {chapters.map((chapter, chapterIndex) => {
-                      const chapterVideos = items.filter(
-                        (item) =>
-                          item.kind === "video" &&
-                          item.parent_id === chapter.id &&
-                          item.accessible,
-                      );
-                      return (
-                        <div className="chapter-group" key={chapter.id}>
-                          <div className="chapter-heading">
-                            <span>
-                              {String(chapterIndex + 1).padStart(2, "0")}
-                            </span>
-                            <div>
-                              <small>CHAPTER</small>
-                              <h4>{chapter.name}</h4>
-                              {chapter.description && (
-                                <p>{chapter.description}</p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="video-list">
-                            {chapterVideos.map((video, videoIndex) => (
-                              <VideoRow
-                                key={video.id}
-                                video={video}
-                                index={videoIndex}
-                                progress={data.progress.find(
-                                  (progress: any) =>
-                                    progress.video_id === video.id,
-                                )}
-                              />
-                            ))}
-                            {!chapterVideos.length && (
-                              <p className="chapter-empty">
-                                Your teacher has not added learning materials to
-                                this chapter yet.
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {!chapters.length && (
-                      <p className="chapter-empty">
-                        Your teacher has not added chapters to this module yet.
+                  <div className="module-materials video-list">
+                    {moduleVideos.map((video, videoIndex) => (
+                      <VideoRow
+                        key={video.id}
+                        video={video}
+                        index={videoIndex}
+                        progress={data.progress.find(
+                          (progress: any) => progress.video_id === video.id,
+                        )}
+                      />
+                    ))}
+                    {!moduleVideos.length && (
+                      <p className="module-empty">
+                        Your teacher has not added learning materials to this
+                        module yet.
                       </p>
                     )}
                   </div>
@@ -709,7 +671,7 @@ function SubjectDetail({ id, data }: { id: string; data: any }) {
           {!modules.length && (
             <Empty
               title="No modules here yet"
-              description="Your teacher will add modules and chapters to this subject."
+              description="Your teacher will add modules and learning materials to this subject."
             />
           )}
         </>
@@ -745,9 +707,17 @@ function Watch({
     } catch {}
   };
   const items: Item[] = data.content;
+  const moduleIdFor = (item?: Item) => {
+    let current = item;
+    let steps = 0;
+    while (current && current.kind !== "chapter" && steps++ < 10)
+      current = items.find((candidate) => candidate.id === current?.parent_id);
+    return current?.id;
+  };
+  const activeModuleId = moduleIdFor(items.find((item) => item.id === videoId));
   const related = items.filter(
       (i) =>
-        i.kind === "video" && i.accessible && i.parent_id === lesson?.parent_id,
+        i.kind === "video" && i.accessible && moduleIdFor(i) === activeModuleId,
     ),
     index = related.findIndex((i) => i.id === videoId);
   const save = async (complete = false) => {

@@ -287,6 +287,7 @@ api.get("/search", async (req, res) => {
   const found = ctx.nodes
     .filter(
       (n: any) =>
+        n.kind !== "topic" &&
         canAccess(ctx, n.id) &&
         `${n.name} ${n.description}`.toLowerCase().includes(q.toLowerCase()),
     )
@@ -554,11 +555,14 @@ async function validateContent(b: any, recordId?: string) {
     const expected: Record<string, string> = {
       chapter: "subject",
       topic: "chapter",
-      video: "topic",
+      video: "chapter",
     };
-    if (parent?.kind !== expected[b.kind] || b.parent_id === recordId)
+    const validParent =
+      parent?.kind === expected[b.kind] ||
+      (b.kind === "video" && parent?.kind === "topic");
+    if (!validParent || b.parent_id === recordId)
       bad(
-        `Select a valid ${{ subject: "subject", chapter: "module", topic: "chapter" }[expected[b.kind]]}.`,
+        `Select a valid ${{ subject: "subject", chapter: "module" }[expected[b.kind]]}.`,
       );
   }
   if (b.kind !== "subject") b.public = 0;

@@ -2575,8 +2575,7 @@ a:focus-visible {
   font-family: Georgia, serif;
   font-size: 19px;
 }
-.module-heading p,
-.chapter-heading p {
+.module-heading p {
   margin: 5px 0 0;
   color: #849078;
   font-size: 11px;
@@ -2587,50 +2586,10 @@ a:focus-visible {
   font-size: 10px;
   white-space: nowrap;
 }
-.module-chapters {
-  display: grid;
-}
-.chapter-group {
-  display: grid;
-  grid-template-columns: minmax(190px, 0.55fr) minmax(0, 1fr);
-  gap: 22px;
+.module-materials {
   padding: 20px 22px;
 }
-.chapter-group + .chapter-group {
-  border-top: 1px solid #edf0e8;
-}
-.chapter-heading {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  gap: 11px;
-  align-content: start;
-}
-.chapter-heading > span {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: #eef2e6;
-  color: #6f845f;
-  font-size: 10px;
-  font-weight: 800;
-}
-.chapter-heading small {
-  color: #93a383;
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: 0.13em;
-}
-.chapter-heading h4 {
-  margin: 4px 0 0;
-  color: #315442;
-  font-size: 13px;
-}
-.chapter-group .video-list {
-  gap: 7px;
-}
-.chapter-empty {
+.module-empty {
   margin: 0;
   padding: 15px;
   border: 1px dashed #dfe5d4;
@@ -5368,7 +5327,7 @@ th,
   .module-heading { grid-template-columns:1fr; gap:10px; }
   .module-number { width:max-content; }
   .module-count { white-space:normal; }
-  .chapter-group { grid-template-columns:1fr; padding:18px 16px; }
+  .module-materials { padding:16px; }
   .coursework-grid { grid-template-columns:1fr; }
   .coursework-meta { grid-template-columns:1fr; }
   .student-assignment-card { grid-template-columns:1fr; }

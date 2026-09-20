@@ -401,7 +401,7 @@ export function pathOf(node: Item, items: Item[]): string {
   while (p && steps++ < 10) {
     const parent = items.find((n) => n.id === p);
     if (!parent) break;
-    names.unshift(parent.name);
+    if (parent.kind !== "topic") names.unshift(parent.name);
     p = parent.parent_id;
   }
   return names.join(" › ");
@@ -414,7 +414,7 @@ export function contentKindLabel(kind: string, plural = false): string {
   const labels: Record<string, [string, string]> = {
     subject: ["subject", "subjects"],
     chapter: ["module", "modules"],
-    topic: ["chapter", "chapters"],
+    topic: ["module section", "module sections"],
     video: ["learning material", "learning materials"],
   };
   return labels[kind]?.[plural ? 1 : 0] || kind;

@@ -609,6 +609,7 @@ test("full hierarchy CRUD rejects invalid parents and hides drafts", async () =>
   );
   assert.equal(wrong.status, 400);
   let parent = s.data.id;
+  let moduleId = "";
   let videoId = "";
   for (const kind of ["chapter", "topic", "video"]) {
     const r = await request(
@@ -619,8 +620,25 @@ test("full hierarchy CRUD rejects invalid parents and hides drafts", async () =>
     );
     assert.equal(r.status, 200, JSON.stringify(r.data));
     parent = r.data.id;
+    if (kind === "chapter") moduleId = r.data.id;
     if (kind === "video") videoId = r.data.id;
   }
+  const directModuleVideo = await request(
+    "/admin/content",
+    "POST",
+    {
+      kind: "video",
+      parent_id: moduleId,
+      name: "Direct module lesson",
+      status: "published",
+    },
+    teacher,
+  );
+  assert.equal(
+    directModuleVideo.status,
+    200,
+    JSON.stringify(directModuleVideo.data),
+  );
   await request(
     "/admin/assignments",
     "POST",
