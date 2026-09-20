@@ -5340,3 +5340,103 @@ th,
 @media (prefers-reduced-motion: reduce) {
   .coursework-card,.student-assignment-card,.document-upload,.file-row { transition:none; }
 }
+
+.material-library-tabs,
+.material-type-tabs {
+  display: inline-flex;
+  width: auto;
+  margin: 0 0 18px;
+  padding: 5px;
+  gap: 5px;
+  border: 1px solid #dce5d0;
+  border-radius: 12px;
+  background: #f7f9f2;
+}
+.material-library-tabs button,
+.material-type-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 130px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #718365;
+  font-weight: 700;
+}
+.material-library-tabs button.active,
+.material-type-tabs button.active {
+  background: #fff;
+  color: #294f3d;
+  box-shadow: 0 4px 14px rgba(41, 83, 63, 0.1);
+}
+.material-type-tabs {
+  margin-top: 22px;
+  margin-bottom: 0;
+}
+.material-type-tabs button span {
+  min-width: 20px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #eaf1df;
+  font-size: 9px;
+}
+.asset-section { margin-bottom: 20px; }
+.asset-list { display: grid; gap: 12px; }
+.asset-list .material-preview,
+.asset-list .uploaded-file-row { margin: 0; }
+.asset-empty {
+  padding: 18px;
+  border: 1px solid #e2e8d8;
+  border-radius: 10px;
+  color: #87977b;
+  text-align: center;
+  font-size: 11px;
+}
+.upload-progress-panel { margin: 14px 0; }
+.lesson-video-picker {
+  padding: 14px 16px;
+  border: 1px solid #dce5d0;
+  border-top: 0;
+  background: #f7f9f2;
+}
+.lesson-video-picker strong {
+  display: block;
+  margin-bottom: 9px;
+  color: #294f3d;
+  font-size: 11px;
+}
+.lesson-video-picker > div,
+.lesson-resource-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.lesson-video-picker button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 11px;
+  border: 1px solid #d5dfc7;
+  border-radius: 8px;
+  background: #fff;
+  color: #67795e;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.lesson-video-picker button.active {
+  border-color: #315e49;
+  background: #315e49;
+  color: #fff;
+}
+@media (max-width: 620px) {
+  .material-library-tabs,
+  .material-type-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+  .material-library-tabs button,
+  .material-type-tabs button { min-width: 0; }
+  .upload-zone { padding: 22px 14px; }
+  .material-preview-heading .file-action { font-size: 0; }
+  .material-preview-heading .file-action svg { width: 17px; height: 17px; }
+}

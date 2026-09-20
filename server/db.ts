@@ -98,6 +98,12 @@ export async function update(
 }
 export async function initDB() {
   if (pool && process.env.DATABASE_MANAGED_SCHEMA === "true") {
+    await run(
+      `CREATE TABLE IF NOT EXISTS content_assets (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE, upload_id TEXT NOT NULL REFERENCES uploads(id) ON DELETE CASCADE, asset_type TEXT NOT NULL CHECK(asset_type IN ('video','file')), sort_order INTEGER NOT NULL DEFAULT 0, UNIQUE(content_id,upload_id))`,
+    );
+    await run(
+      "CREATE INDEX IF NOT EXISTS idx_content_assets_content ON content_assets(content_id,asset_type,sort_order)",
+    );
     await query("SELECT id FROM platform_owner LIMIT 1");
     return;
   }
@@ -118,6 +124,7 @@ CREATE TABLE IF NOT EXISTS notification_reads (id TEXT PRIMARY KEY, user_id TEXT
 CREATE TABLE IF NOT EXISTS activity_logs (id TEXT PRIMARY KEY, actor_id TEXT, action TEXT NOT NULL, target_id TEXT, detail TEXT NOT NULL DEFAULT '', created_at BIGINT NOT NULL);
 CREATE TABLE IF NOT EXISTS settings (id TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS uploads (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id), storage_key TEXT NOT NULL UNIQUE, filename TEXT NOT NULL, mime TEXT NOT NULL, size BIGINT NOT NULL, state TEXT NOT NULL, created_at BIGINT NOT NULL);
+CREATE TABLE IF NOT EXISTS content_assets (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE, upload_id TEXT NOT NULL REFERENCES uploads(id) ON DELETE CASCADE, asset_type TEXT NOT NULL CHECK(asset_type IN ('video','file')), sort_order INTEGER NOT NULL DEFAULT 0, UNIQUE(content_id,upload_id));
 CREATE TABLE IF NOT EXISTS learning_assignments (id TEXT PRIMARY KEY, teacher_id TEXT NOT NULL REFERENCES users(id), title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', quiz_url TEXT NOT NULL DEFAULT '', due_at BIGINT NOT NULL, time_limit_minutes INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','published')), created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL);
 CREATE TABLE IF NOT EXISTS assignment_targets (id TEXT PRIMARY KEY, assignment_id TEXT NOT NULL REFERENCES learning_assignments(id) ON DELETE CASCADE, user_id TEXT REFERENCES users(id) ON DELETE CASCADE, group_id TEXT REFERENCES student_groups(id) ON DELETE CASCADE, CHECK((user_id IS NOT NULL AND group_id IS NULL) OR (user_id IS NULL AND group_id IS NOT NULL)));
 CREATE TABLE IF NOT EXISTS assignment_resources (id TEXT PRIMARY KEY, assignment_id TEXT NOT NULL REFERENCES learning_assignments(id) ON DELETE CASCADE, upload_id TEXT NOT NULL REFERENCES uploads(id) ON DELETE CASCADE, UNIQUE(assignment_id,upload_id));
@@ -140,6 +147,7 @@ CREATE INDEX IF NOT EXISTS idx_watch_time ON watch_events(created_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_otp_identifier ON otps(identifier,created_at);
 CREATE INDEX IF NOT EXISTS idx_content_status ON content(kind,status);
+CREATE INDEX IF NOT EXISTS idx_content_assets_content ON content_assets(content_id,asset_type,sort_order);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role,created_at);
 CREATE INDEX IF NOT EXISTS idx_assignment_due ON learning_assignments(status,due_at);
 CREATE INDEX IF NOT EXISTS idx_assignment_target_user ON assignment_targets(user_id,assignment_id);

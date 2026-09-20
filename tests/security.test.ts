@@ -767,6 +767,30 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
   });
   assert.equal(up.status, 200);
   const asset = (await up.json()) as any;
+  const documentBytes = Buffer.alloc(64);
+  documentBytes.write("%PDF-1.4", 0);
+  const documentPrep = await request(
+    "/storage/prepare",
+    "POST",
+    { filename: "lesson-notes.pdf", mime: "application/pdf", size: 64 },
+    teacher,
+  );
+  const documentForm = new FormData();
+  documentForm.append(
+    "file",
+    new Blob([documentBytes], { type: "application/pdf" }),
+    "lesson-notes.pdf",
+  );
+  const documentUpload = await fetch(origin + documentPrep.data.url, {
+    method: "POST",
+    headers: {
+      Cookie: teacher.cookie,
+      "X-CSRF-Token": teacher.csrf,
+      Origin: origin,
+    },
+    body: documentForm,
+  });
+  assert.equal(documentUpload.status, 200);
   const v = (
     await request("/admin/content/python-4", "GET", undefined, teacher)
   ).data;
@@ -775,7 +799,12 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
       await request(
         "/admin/content/python-4",
         "PUT",
-        { ...v, storage_key: asset.key },
+        {
+          ...v,
+          storage_key: asset.key,
+          video_upload_ids: [prep.data.id],
+          file_upload_ids: [documentPrep.data.id],
+        },
         teacher,
       )
     ).status,
@@ -786,6 +815,11 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
   ).data;
   assert.equal(saved.uploaded_files.storage_key.id, prep.data.id);
   assert.equal(saved.uploaded_files.storage_key.filename, "format-fixture.mp4");
+  assert.equal(saved.assets.length, 2);
+  assert.deepEqual(saved.assets.map((item: any) => item.asset_type).sort(), [
+    "file",
+    "video",
+  ]);
   const preview = await fetch(origin + `/api/storage/preview/${prep.data.id}`, {
     headers: { Cookie: teacher.cookie, Range: "bytes=0-7" },
   });
@@ -809,13 +843,35 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
   assert.equal(r.status, 206);
   assert.equal(r.headers.get("content-range"), "bytes 0-15/64");
   assert.equal((await r.arrayBuffer()).byteLength, 16);
+  const lesson = (await request("/videos/python-4", "GET", undefined, student))
+    .data;
+  assert.equal(lesson.videos.length, 1);
+  assert.equal(lesson.files.length, 1);
+  assert.equal(
+    (
+      await request(
+        lesson.files[0].url.replace("/api", ""),
+        "GET",
+        undefined,
+        student,
+      )
+    ).status,
+    200,
+  );
   assert.equal((await request("/storage/media/python-4/video")).status, 401);
   assert.equal(
     (
       await request(
         "/admin/content/python-4",
         "PUT",
-        { ...saved, storage_key: "", uploaded_files: undefined },
+        {
+          ...saved,
+          storage_key: "",
+          resource_key: "",
+          video_upload_ids: [],
+          file_upload_ids: [],
+          uploaded_files: undefined,
+        },
         teacher,
       )
     ).status,

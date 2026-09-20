@@ -36,6 +36,8 @@ export type Item = {
   storage_key?: string;
   caption_key?: string;
   resource_key?: string;
+  video_count?: number;
+  file_count?: number;
 };
 export type User = {
   id: string;

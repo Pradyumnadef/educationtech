@@ -87,8 +87,10 @@ export async function cleanupUploadIfUnreferenced(uploadId: string) {
   const linkedReference = await one(
     `SELECT upload_id FROM assignment_resources WHERE upload_id=?
      UNION ALL
-     SELECT upload_id FROM submission_files WHERE upload_id=? LIMIT 1`,
-    [row.id, row.id],
+     SELECT upload_id FROM submission_files WHERE upload_id=?
+     UNION ALL
+     SELECT upload_id FROM content_assets WHERE upload_id=? LIMIT 1`,
+    [row.id, row.id, row.id],
   );
   if (contentReference || linkedReference) return true;
   try {
@@ -137,11 +139,9 @@ storageRoutes.post("/prepare", auth, async (req, res) => {
       .status(403)
       .json({ error: "Students can only upload assignment answers." });
   if (user.role === "student" && !documentFormats.has(b.mime))
-    return res
-      .status(400)
-      .json({
-        error: "Choose a PDF, Word, Excel, PowerPoint, text, or CSV file.",
-      });
+    return res.status(400).json({
+      error: "Choose a PDF, Word, Excel, PowerPoint, text, or CSV file.",
+    });
   if (b.purpose !== "content" && !documentFormats.has(b.mime))
     return res.status(400).json({ error: "Choose a supported document file." });
   if (!formats[b.mime])
@@ -549,4 +549,37 @@ storageRoutes.get("/media/:id/:type", auth, async (req, res) => {
   res.on("close", () => clearInterval(check));
   res.on("finish", () => clearInterval(check));
   await deliverPreview(row, req, res, type === "resource");
+});
+storageRoutes.get("/media/:id/asset/:uploadId", auth, async (req, res) => {
+  const ctx = await accessContext((req as any).user);
+  const content = ctx.nodes.find((node: any) => node.id === req.params.id);
+  if (!content || !canAccess(ctx, content.id))
+    return res
+      .status(403)
+      .json({ error: "This content has not been assigned to your account." });
+  const row = await one(
+    `SELECT u.* FROM content_assets a JOIN uploads u ON u.id=a.upload_id AND u.state='ready'
+     WHERE a.content_id=? AND u.id=?`,
+    [content.id, req.params.uploadId],
+  );
+  if (!row) return res.status(404).json({ error: "File not found." });
+  const check = setInterval(async () => {
+    try {
+      const user = await one(
+        "SELECT * FROM users WHERE id=? AND status='active'",
+        [(req as any).user.id],
+      );
+      const live = await one(
+        "SELECT id FROM sessions WHERE id=? AND expires_at>?",
+        [(req as any).session.id, now()],
+      );
+      if (!user || !live || !canAccess(await accessContext(user), content.id))
+        res.destroy();
+    } catch {
+      res.destroy();
+    }
+  }, 2000);
+  res.on("close", () => clearInterval(check));
+  res.on("finish", () => clearInterval(check));
+  await deliverPreview(row, req, res, !row.mime.startsWith("video/"));
 });

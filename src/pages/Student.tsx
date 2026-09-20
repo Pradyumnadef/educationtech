@@ -694,7 +694,8 @@ function Watch({
     toast = useToast(),
     [tab, setTab] = useState("notes"),
     [denied, setDenied] = useState(""),
-    [speed, setSpeed] = useState("1");
+    [speed, setSpeed] = useState("1"),
+    [selectedVideo, setSelectedVideo] = useState("");
   const lastTime = useRef(0),
     lastSave = useRef(Date.now()),
     lastLocalSave = useRef(0);
@@ -747,6 +748,10 @@ function Watch({
     }
   };
   useEffect(() => {
+    if (!lesson) return;
+    setSelectedVideo(lesson.videos?.[0]?.url || lesson.media || "");
+  }, [lesson, videoId]);
+  useEffect(() => {
     setDenied("");
     lastTime.current = 0;
     lastSave.current = Date.now();
@@ -768,9 +773,9 @@ function Watch({
       <div className="watch-layout">
         <div>
           <div className="video-player">
-            {lesson.media ? (
+            {selectedVideo ? (
               <video
-                key={videoId}
+                key={`${videoId}:${selectedVideo}`}
                 ref={ref}
                 controls
                 controlsList="nodownload"
@@ -812,7 +817,7 @@ function Watch({
                   )
                 }
               >
-                <source src={lesson.media} />
+                <source src={selectedVideo} />
                 {lesson.captions && (
                   <track
                     src={lesson.captions}
@@ -830,6 +835,26 @@ function Watch({
               />
             )}
           </div>
+          {lesson.videos?.length > 1 && (
+            <div
+              className="lesson-video-picker"
+              aria-label="Videos in this learning material"
+            >
+              <strong>Videos in this lesson</strong>
+              <div>
+                {lesson.videos.map((video: any, index: number) => (
+                  <button
+                    type="button"
+                    key={video.id}
+                    className={selectedVideo === video.url ? "active" : ""}
+                    onClick={() => setSelectedVideo(video.url)}
+                  >
+                    <Play size={14} /> {video.filename || `Video ${index + 1}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="player-toolbar">
             <span>
               <ShieldIcon /> Your private learning space
@@ -914,15 +939,20 @@ function Watch({
               <p>
                 {lesson.notes || "No notes have been added to this lesson yet."}
               </p>
+            ) : lesson.files?.length ? (
+              <div className="lesson-resource-list">
+                {lesson.files.map((file: any) => (
+                  <a className="button secondary" href={file.url} key={file.id}>
+                    <Download size={16} /> {file.filename}
+                  </a>
+                ))}
+              </div>
             ) : lesson.resource ? (
               <a className="button secondary" href={lesson.resource}>
                 <Download size={16} /> Download lesson resource
               </a>
             ) : (
-              <p>
-                No extra resources for this lesson. Your video has everything
-                you need to get started.
-              </p>
+              <p>No files have been added to this lesson yet.</p>
             )}
           </div>
         </div>

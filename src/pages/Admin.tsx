@@ -898,6 +898,7 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
       new URLSearchParams(useLocation().search).get("q") || "",
     ),
     [status, setStatus] = useState("all"),
+    [materialTab, setMaterialTab] = useState<"videos" | "files">("videos"),
     [page, setPage] = useState(1),
     [editor, setEditor] = useState<any>(null),
     [confirm, setConfirm] = useState<Item | null>(null),
@@ -908,6 +909,10 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
   const rows = data.content.filter(
     (c: Item) =>
       c.kind === kind &&
+      (kind !== "video" ||
+        (materialTab === "videos"
+          ? Number(c.video_count || 0) > 0 || Number(c.file_count || 0) === 0
+          : Number(c.file_count || 0) > 0)) &&
       `${c.name} ${c.description} ${c.tags}`
         .toLowerCase()
         .includes(debounced.toLowerCase()) &&
@@ -941,7 +946,14 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
                 : `Organize your ${pluralLabel} into clear, connected learning experiences.`
         }
       >
-        <Button onClick={() => setEditor({ kind })}>
+        <Button
+          onClick={() =>
+            setEditor({
+              kind,
+              ...(kind === "video" ? { assetTab: materialTab } : {}),
+            })
+          }
+        >
           <Plus size={17} /> Add {itemLabel}
         </Button>
       </Heading>
@@ -965,6 +977,38 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
               )}
             </button>
           ))}
+        </div>
+      )}
+      {kind === "video" && (
+        <div
+          className="tabs material-library-tabs"
+          role="tablist"
+          aria-label="Learning material type"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={materialTab === "videos"}
+            className={materialTab === "videos" ? "active" : ""}
+            onClick={() => {
+              setMaterialTab("videos");
+              setPage(1);
+            }}
+          >
+            <FileVideo size={17} /> Videos
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={materialTab === "files"}
+            className={materialTab === "files" ? "active" : ""}
+            onClick={() => {
+              setMaterialTab("files");
+              setPage(1);
+            }}
+          >
+            <FileText size={17} /> Files
+          </button>
         </div>
       )}
       <div className="table-toolbar">
@@ -1003,7 +1047,7 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
               <th>{kind === "video" ? "Learning material" : "Name"}</th>
               <th>Located in</th>
               <th>Status</th>
-              <th>{kind === "video" ? "Duration" : "Contents"}</th>
+              <th>{kind === "video" ? "Uploaded items" : "Contents"}</th>
               <th>Added</th>
               <th>Actions</th>
             </tr>
@@ -1044,7 +1088,7 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
                 </td>
                 <td>
                   {kind === "video"
-                    ? mins(c.duration)
+                    ? `${Number(c.video_count || 0)} video${Number(c.video_count || 0) === 1 ? "" : "s"} · ${Number(c.file_count || 0)} file${Number(c.file_count || 0) === 1 ? "" : "s"}`
                     : `${descendants(c, data.content).filter((i) => i.kind === "video").length} lessons`}
                 </td>
                 <td>{date(c.created_at)}</td>
@@ -1139,6 +1183,22 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
     [uploadedFiles, setUploadedFiles] = useState<Record<string, any>>(
       item.uploaded_files || {},
     ),
+    [assetTab, setAssetTab] = useState<"videos" | "files">(
+      item.assetTab ||
+        ((item.assets || []).some(
+          (asset: any) => asset.asset_type === "file",
+        ) &&
+        !(item.assets || []).some((asset: any) => asset.asset_type === "video")
+          ? "files"
+          : "videos"),
+    ),
+    [videoAssets, setVideoAssets] = useState<any[]>(
+      (item.assets || []).filter((asset: any) => asset.asset_type === "video"),
+    ),
+    [fileAssets, setFileAssets] = useState<any[]>(
+      (item.assets || []).filter((asset: any) => asset.asset_type === "file"),
+    ),
+    [pendingAssets, setPendingAssets] = useState<any[]>([]),
     toast = useToast();
   const kindLabel = contentKindLabel(form.kind);
   const videoLimit = Number(uploadLimits?.video || 50 * 1024 ** 2);
@@ -1152,13 +1212,6 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
     (c: Item) => c.kind === parentKind[form.kind],
   );
   async function upload(file: File, field: string) {
-    if (field === "storage_key" && file.size > videoLimit) {
-      toast(
-        `This video is too large. Your current storage plan allows up to ${formatUploadLimit(videoLimit)} per video.`,
-        "error",
-      );
-      return;
-    }
     setUploading(field);
     setProgress(0);
     try {
@@ -1171,20 +1224,65 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
         setScan({ ...out, field });
         toast("Upload complete. Waiting for the security scan.");
       }
-      if (field === "storage_key") {
-        const v = document.createElement("video");
-        const url = URL.createObjectURL(file);
-        v.src = url;
-        v.onloadedmetadata = () => {
-          if (Number.isFinite(v.duration))
-            set("duration", Math.ceil(v.duration));
-          URL.revokeObjectURL(url);
-        };
-      }
     } catch (e: any) {
       toast(e.message, "error");
     } finally {
       setUploading("");
+    }
+  }
+  async function uploadMany(files: File[], type: "video" | "file") {
+    const available =
+      type === "video" ? 20 - videoAssets.length : 30 - fileAssets.length;
+    if (files.length > available) {
+      toast(
+        `You can attach up to ${type === "video" ? 20 : 30} ${type === "video" ? "videos" : "files"} to one learning material.`,
+        "error",
+      );
+      return;
+    }
+    setUploading(type);
+    setProgress(0);
+    let completed = 0;
+    try {
+      for (const file of files) {
+        if (type === "video" && file.size > videoLimit)
+          throw new Error(
+            `“${file.name}” is too large. Your current plan allows up to ${formatUploadLimit(videoLimit)} per video.`,
+          );
+        const out = await uploadFile(file, (value) =>
+          setProgress(
+            Math.round(((completed + value / 100) / files.length) * 100),
+          ),
+        );
+        if (out.state === "ready") {
+          const ready = { ...out, asset_type: type };
+          if (type === "video")
+            setVideoAssets((current) =>
+              current.some((asset) => asset.id === out.id)
+                ? current
+                : [...current, ready],
+            );
+          else
+            setFileAssets((current) =>
+              current.some((asset) => asset.id === out.id)
+                ? current
+                : [...current, ready],
+            );
+        } else
+          setPendingAssets((current) => [
+            ...current,
+            { ...out, asset_type: type },
+          ]);
+        completed += 1;
+      }
+      toast(
+        `${files.length} ${files.length === 1 ? "item" : "items"} uploaded.`,
+      );
+    } catch (e: any) {
+      toast(e.message, "error");
+    } finally {
+      setUploading("");
+      setProgress(0);
     }
   }
   return (
@@ -1205,6 +1303,12 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
               );
             const payload = {
               ...form,
+              storage_key:
+                videoAssets[0]?.storage_key || videoAssets[0]?.key || "",
+              resource_key:
+                fileAssets[0]?.storage_key || fileAssets[0]?.key || "",
+              video_upload_ids: videoAssets.map((asset) => asset.id),
+              file_upload_ids: fileAssets.map((asset) => asset.id),
               duration: Number(form.duration),
               public: Number(form.public),
             };
@@ -1358,97 +1462,233 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
         </div>
         {form.kind === "video" && (
           <>
-            <div className="upload-zone">
-              <FileVideo size={32} />
-              <h3>
-                {form.storage_key
-                  ? "Video attached. Ready for a little discovery."
-                  : "Give this lesson its video."}
-              </h3>
-              <p>
-                MP4, WebM, or MOV · Up to {formatUploadLimit(videoLimit)} ·
-                Private storage
-              </p>
-              <label className="button secondary">
-                <Upload size={16} />
-                {form.storage_key ? "Replace video" : "Choose video"}
-                <input
-                  type="file"
-                  accept="video/mp4,video/webm,video/quicktime"
-                  hidden
-                  disabled={!!uploading}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    e.target.value = "";
-                    if (file) upload(file, "storage_key");
-                  }}
-                />
-              </label>
+            <div
+              className="tabs material-type-tabs"
+              role="tablist"
+              aria-label="Learning material type"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={assetTab === "videos"}
+                className={assetTab === "videos" ? "active" : ""}
+                onClick={() => setAssetTab("videos")}
+              >
+                <FileVideo size={17} /> Videos <span>{videoAssets.length}</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={assetTab === "files"}
+                className={assetTab === "files" ? "active" : ""}
+                onClick={() => setAssetTab("files")}
+              >
+                <FileText size={17} /> Files <span>{fileAssets.length}</span>
+              </button>
             </div>
-            {uploadedFiles.storage_key && (
-              <div className="material-preview">
-                <div className="material-preview-heading">
-                  <div className="uploaded-file-icon">
-                    <FileVideo size={19} />
-                  </div>
-                  <div className="uploaded-file-meta">
-                    <strong>{uploadedFiles.storage_key.filename}</strong>
-                    <span>
-                      {formatFileSize(uploadedFiles.storage_key.size)} · Ready
-                      to view
-                    </span>
-                  </div>
-                  <span className="file-ready">
-                    <Check size={13} /> Uploaded
-                  </span>
+            {assetTab === "videos" ? (
+              <section className="asset-section" aria-label="Videos">
+                <div className="upload-zone">
+                  <FileVideo size={32} />
+                  <h3>Upload one or more lesson videos</h3>
+                  <p>
+                    MP4, WebM, or MOV · Up to {formatUploadLimit(videoLimit)}{" "}
+                    per video · Maximum 20 videos
+                  </p>
+                  <label className="button secondary">
+                    <Upload size={16} /> Choose videos
+                    <input
+                      type="file"
+                      multiple
+                      accept="video/mp4,video/webm,video/quicktime"
+                      hidden
+                      disabled={!!uploading}
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        e.target.value = "";
+                        if (files.length) uploadMany(files, "video");
+                      }}
+                    />
+                  </label>
                 </div>
-                <video
-                  controls
-                  preload="metadata"
-                  src={`/api/storage/preview/${uploadedFiles.storage_key.id}`}
-                >
-                  Your browser does not support video playback.
-                </video>
-              </div>
+                <div className="asset-list">
+                  {videoAssets.map((file, index) => (
+                    <div className="material-preview" key={file.id}>
+                      <div className="material-preview-heading">
+                        <div className="uploaded-file-icon">
+                          <FileVideo size={19} />
+                        </div>
+                        <div className="uploaded-file-meta">
+                          <strong>{file.filename}</strong>
+                          <span>
+                            Video {index + 1} · {formatFileSize(file.size)}
+                          </span>
+                        </div>
+                        <a
+                          className="file-action"
+                          href={`/api/storage/preview/${file.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <Eye size={14} /> View
+                        </a>
+                        <button
+                          className="icon-button file-remove"
+                          type="button"
+                          aria-label={`Remove ${file.filename}`}
+                          onClick={() =>
+                            setVideoAssets((current) =>
+                              current.filter((asset) => asset.id !== file.id),
+                            )
+                          }
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                      <video
+                        controls
+                        preload="metadata"
+                        src={`/api/storage/preview/${file.id}`}
+                      >
+                        Your browser does not support video playback.
+                      </video>
+                    </div>
+                  ))}
+                  {!videoAssets.length && (
+                    <p className="asset-empty">No videos uploaded yet.</p>
+                  )}
+                </div>
+              </section>
+            ) : (
+              <section className="asset-section" aria-label="Files">
+                <div className="upload-zone">
+                  <FileText size={32} />
+                  <h3>Upload one or more learning files</h3>
+                  <p>
+                    PDF, Word, Excel, PowerPoint, text, or CSV · Maximum 30
+                    files
+                  </p>
+                  <label className="button secondary">
+                    <Upload size={16} /> Choose files
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+                      hidden
+                      disabled={!!uploading}
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        e.target.value = "";
+                        if (files.length) uploadMany(files, "file");
+                      }}
+                    />
+                  </label>
+                </div>
+                <div className="asset-list">
+                  {fileAssets.map((file, index) => (
+                    <UploadedFile
+                      key={file.id}
+                      file={file}
+                      label={`File ${index + 1}`}
+                      onRemove={() =>
+                        setFileAssets((current) =>
+                          current.filter((asset) => asset.id !== file.id),
+                        )
+                      }
+                    />
+                  ))}
+                  {!fileAssets.length && (
+                    <p className="asset-empty">No files uploaded yet.</p>
+                  )}
+                </div>
+              </section>
             )}
             {uploading && (
-              <div role="status">
+              <div role="status" className="upload-progress-panel">
                 <div className="progress-track">
                   <i style={{ width: `${progress}%` }} />
                 </div>
                 <p className="muted">Uploading… {progress}%</p>
               </div>
             )}
-            {scan && (
+            {!!pendingAssets.length && (
               <div className="scan-notice">
                 <p>
-                  File uploaded. Security scan: {scan.state}. You can save this
-                  lesson as a draft while processing.
+                  {pendingAssets.length} uploaded{" "}
+                  {pendingAssets.length === 1 ? "item is" : "items are"} waiting
+                  for a security scan.
                 </p>
                 <Button
                   type="button"
                   variant="secondary small"
                   onClick={async () => {
                     try {
-                      const r = await api(`/storage/status/${scan.id}`);
-                      if (r.state === "ready") {
-                        set(scan.field, r.storage_key);
+                      const remaining: any[] = [];
+                      for (const pending of pendingAssets) {
+                        const result = await api(
+                          `/storage/status/${pending.id}`,
+                        );
+                        if (result.state === "ready") {
+                          const ready = {
+                            ...pending,
+                            storage_key: result.storage_key,
+                            key: result.storage_key,
+                            state: "ready",
+                          };
+                          if (pending.asset_type === "video")
+                            setVideoAssets((current) =>
+                              current.some((asset) => asset.id === ready.id)
+                                ? current
+                                : [...current, ready],
+                            );
+                          else
+                            setFileAssets((current) =>
+                              current.some((asset) => asset.id === ready.id)
+                                ? current
+                                : [...current, ready],
+                            );
+                        } else if (result.state !== "rejected")
+                          remaining.push(pending);
+                      }
+                      setPendingAssets(remaining);
+                      toast(
+                        remaining.length
+                          ? "Some files are still being scanned."
+                          : "Security scan complete. Files attached.",
+                      );
+                    } catch (e: any) {
+                      toast(e.message, "error");
+                    }
+                  }}
+                >
+                  Check scan status
+                </Button>
+              </div>
+            )}
+            {scan && (
+              <div className="scan-notice">
+                <p>Caption uploaded. Security scan: {scan.state}.</p>
+                <Button
+                  type="button"
+                  variant="secondary small"
+                  onClick={async () => {
+                    try {
+                      const result = await api(`/storage/status/${scan.id}`);
+                      if (result.state === "ready") {
+                        set(scan.field, result.storage_key);
                         setUploadedFiles((current) => ({
                           ...current,
                           [scan.field]: {
                             ...scan,
-                            key: r.storage_key,
+                            key: result.storage_key,
                             state: "ready",
                           },
                         }));
                         setScan(null);
-                        toast("Security scan complete. File attached.");
-                      } else if (r.state === "rejected") {
-                        toast(
-                          "The file failed its security scan. Upload a different file.",
-                          "error",
-                        );
+                        toast("Security scan complete. Caption attached.");
+                      } else if (result.state === "rejected") {
                         setScan(null);
+                        toast("The file failed its security scan.", "error");
                       } else toast("The scan is still in progress.");
                     } catch (e: any) {
                       toast(e.message, "error");
@@ -1459,68 +1699,37 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
                 </Button>
               </div>
             )}
-            <div className="grid two">
-              <Field
-                label={
-                  form.caption_key
-                    ? "Captions attached · Replace VTT"
-                    : "Captions (WebVTT, up to 1 MB)"
-                }
-              >
-                <input
-                  type="file"
-                  accept=".vtt"
-                  disabled={!!uploading}
-                  onChange={(e) => {
-                    if (e.target.files?.[0])
-                      upload(e.target.files[0], "caption_key");
+            <Field
+              label={
+                form.caption_key
+                  ? "Captions attached · Replace VTT"
+                  : "Captions (WebVTT, up to 1 MB)"
+              }
+            >
+              <input
+                type="file"
+                accept=".vtt"
+                disabled={!!uploading}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) upload(file, "caption_key");
+                }}
+              />
+              {uploadedFiles.caption_key && (
+                <UploadedFile
+                  file={uploadedFiles.caption_key}
+                  label="Captions"
+                  onRemove={() => {
+                    set("caption_key", "");
+                    setUploadedFiles((current) => ({
+                      ...current,
+                      caption_key: null,
+                    }));
                   }}
                 />
-                {uploadedFiles.caption_key && (
-                  <UploadedFile
-                    file={uploadedFiles.caption_key}
-                    label="Captions"
-                    onRemove={() => {
-                      set("caption_key", "");
-                      setUploadedFiles((current) => ({
-                        ...current,
-                        caption_key: null,
-                      }));
-                    }}
-                  />
-                )}
-              </Field>
-              <Field
-                label={
-                  form.resource_key
-                    ? "Resource attached · Replace file"
-                    : "Lesson resource (PDF, Word, Excel, PowerPoint, text, or CSV)"
-                }
-              >
-                <input
-                  type="file"
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
-                  disabled={!!uploading}
-                  onChange={(e) => {
-                    if (e.target.files?.[0])
-                      upload(e.target.files[0], "resource_key");
-                  }}
-                />
-                {uploadedFiles.resource_key && (
-                  <UploadedFile
-                    file={uploadedFiles.resource_key}
-                    label="Lesson resource"
-                    onRemove={() => {
-                      set("resource_key", "");
-                      setUploadedFiles((current) => ({
-                        ...current,
-                        resource_key: null,
-                      }));
-                    }}
-                  />
-                )}
-              </Field>
-            </div>
+              )}
+            </Field>
             <Field label="Lesson notes">
               <textarea
                 value={form.notes}

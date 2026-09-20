@@ -47,10 +47,58 @@ const contentSchema = z.object({
   storage_key: z.string().max(300).default(""),
   caption_key: z.string().max(300).default(""),
   resource_key: z.string().max(300).default(""),
+  video_upload_ids: z.array(z.uuid()).max(20).optional(),
+  file_upload_ids: z.array(z.uuid()).max(30).optional(),
   publish_at: z.number().nullable().default(null),
 });
 function bad(message: string, status = 400) {
   throw Object.assign(new Error(message), { status });
+}
+async function resolveContentAssets(
+  body: any,
+  ownerId: string,
+  existingContentId?: string,
+) {
+  const videos: any[] = [],
+    files: any[] = [];
+  for (const [type, ids] of [
+    ["video", body.video_upload_ids],
+    ["file", body.file_upload_ids],
+  ] as const)
+    for (const uploadId of ids || []) {
+      const upload = existingContentId
+        ? await one(
+            `SELECT DISTINCT u.* FROM uploads u
+             LEFT JOIN content_assets a ON a.upload_id=u.id AND a.content_id=?
+             LEFT JOIN content c ON c.id=? AND (c.storage_key=u.storage_key OR c.resource_key=u.storage_key)
+             WHERE u.id=? AND u.state='ready' AND (u.owner_id=? OR a.upload_id IS NOT NULL OR c.id IS NOT NULL)`,
+            [existingContentId, existingContentId, uploadId, ownerId],
+          )
+        : await one(
+            "SELECT * FROM uploads WHERE id=? AND owner_id=? AND state='ready'",
+            [uploadId, ownerId],
+          );
+      const valid =
+        upload &&
+        (type === "video"
+          ? upload.mime.startsWith("video/")
+          : documentMimes.has(upload.mime));
+      if (!valid) bad(`An uploaded ${type} is invalid or still processing.`);
+      (type === "video" ? videos : files).push(upload);
+    }
+  return { videos, files };
+}
+async function saveContentAssets(contentId: string, assets: any) {
+  await run("DELETE FROM content_assets WHERE content_id=?", [contentId]);
+  for (const [type, rows] of Object.entries(assets) as any)
+    for (let index = 0; index < rows.length; index++)
+      await insert("content_assets", {
+        id: id(),
+        content_id: contentId,
+        upload_id: rows[index].id,
+        asset_type: type === "videos" ? "video" : "file",
+        sort_order: index,
+      });
 }
 async function studentAssignment(userId: string, assignmentId: string) {
   return one(
@@ -314,6 +362,12 @@ api.get("/videos/:id", async (req, res) => {
     bad("This content has not been assigned to your account yet.", 403);
   const node = ctx.nodes.find((n: any) => n.id === req.params.id);
   if (node.kind !== "video") bad("Video not found.", 404);
+  const assets = await query(
+    `SELECT u.id,u.filename,u.mime,u.size,a.asset_type,a.sort_order
+     FROM content_assets a JOIN uploads u ON u.id=a.upload_id AND u.state='ready'
+     WHERE a.content_id=? ORDER BY a.asset_type DESC,a.sort_order`,
+    [node.id],
+  );
   res.json({
     ...publicContent(node),
     media: node.storage_key ? `/api/storage/media/${node.id}/video` : null,
@@ -323,6 +377,18 @@ api.get("/videos/:id", async (req, res) => {
     resource: node.resource_key
       ? `/api/storage/media/${node.id}/resource`
       : null,
+    videos: assets
+      .filter((asset: any) => asset.asset_type === "video")
+      .map((asset: any) => ({
+        ...asset,
+        url: `/api/storage/media/${node.id}/asset/${asset.id}`,
+      })),
+    files: assets
+      .filter((asset: any) => asset.asset_type === "file")
+      .map((asset: any) => ({
+        ...asset,
+        url: `/api/storage/media/${node.id}/asset/${asset.id}`,
+      })),
     progress: await one(
       "SELECT * FROM progress WHERE user_id=? AND video_id=?",
       [uid(req), node.id],
@@ -406,9 +472,29 @@ api.get("/admin/overview", async (_req, res) => {
   const students = await query(
     "SELECT id,name,email,phone,status,avatar,interests,created_at,last_active FROM users WHERE role='student' ORDER BY created_at DESC",
   );
-  const content = (
-    await query("SELECT * FROM content ORDER BY created_at DESC")
-  ).map(publicContent);
+  const rawContent = await query(
+    "SELECT * FROM content ORDER BY created_at DESC",
+  );
+  const assetCounts = await query(
+    `SELECT content_id,
+      SUM(CASE WHEN asset_type='video' THEN 1 ELSE 0 END) AS video_count,
+      SUM(CASE WHEN asset_type='file' THEN 1 ELSE 0 END) AS file_count
+     FROM content_assets GROUP BY content_id`,
+  );
+  const countsByContent = new Map(
+    assetCounts.map((row: any) => [row.content_id, row]),
+  );
+  const content = rawContent.map((row: any) => ({
+    ...publicContent(row),
+    video_count: Math.max(
+      Number(countsByContent.get(row.id)?.video_count || 0),
+      row.storage_key ? 1 : 0,
+    ),
+    file_count: Math.max(
+      Number(countsByContent.get(row.id)?.file_count || 0),
+      row.resource_key ? 1 : 0,
+    ),
+  }));
   const groups = await query("SELECT * FROM student_groups ORDER BY name");
   const members = await query("SELECT * FROM group_members");
   const grants = await query("SELECT * FROM access_grants");
@@ -611,22 +697,42 @@ api.get("/admin/content/:id", async (req, res) => {
       ]),
     ),
   );
+  const assets = await query(
+    `SELECT u.id,u.filename,u.mime,u.size,u.state,u.storage_key,a.asset_type,a.sort_order
+     FROM content_assets a JOIN uploads u ON u.id=a.upload_id
+     WHERE a.content_id=? ORDER BY a.asset_type DESC,a.sort_order`,
+    [item.id],
+  );
+  for (const [field, type] of [
+    ["storage_key", "video"],
+    ["resource_key", "file"],
+  ]) {
+    const upload = uploadedFiles[field];
+    if (upload && !assets.some((asset: any) => asset.id === upload.id))
+      assets.push({ ...upload, asset_type: type, sort_order: -1 });
+  }
   res.json({
     ...item,
     tags: JSON.parse(item.tags),
     uploaded_files: uploadedFiles,
+    assets,
   });
 });
 api.post("/admin/content", async (req, res) => {
   const b = contentSchema.parse(req.body);
   await validateContent(b);
+  const assets = await resolveContentAssets(b, uid(req));
+  const { video_upload_ids, file_upload_ids, ...content } = b;
   const row = await insert("content", {
     id: id(),
-    ...b,
+    ...content,
+    storage_key: assets.videos[0]?.storage_key || content.storage_key,
+    resource_key: assets.files[0]?.storage_key || content.resource_key,
     tags: JSON.stringify(b.tags),
     created_at: now(),
     updated_at: now(),
   });
+  await saveContentAssets(row.id, assets);
   await audit(uid(req), "content.create", row.id, b.name);
   res.json(publicContent(row));
 });
@@ -638,11 +744,28 @@ api.put("/admin/content/:id", async (req, res) => {
   if (!existing) bad("Content not found.", 404);
   if (b.kind !== existing.kind) bad("Content type cannot be changed.");
   await validateContent(b, req.params.id as string);
-  await update(
-    "content",
-    { ...b, tags: JSON.stringify(b.tags), updated_at: now() },
+  const assets = await resolveContentAssets(
+    b,
+    uid(req),
     req.params.id as string,
   );
+  const previousAssets = await query(
+    "SELECT upload_id FROM content_assets WHERE content_id=?",
+    [req.params.id],
+  );
+  const { video_upload_ids, file_upload_ids, ...content } = b;
+  await update(
+    "content",
+    {
+      ...content,
+      storage_key: assets.videos[0]?.storage_key || content.storage_key,
+      resource_key: assets.files[0]?.storage_key || content.resource_key,
+      tags: JSON.stringify(b.tags),
+      updated_at: now(),
+    },
+    req.params.id as string,
+  );
+  await saveContentAssets(req.params.id as string, assets);
   await audit(uid(req), "content.update", req.params.id as string, b.name);
   const replacedKeys = ["storage_key", "caption_key", "resource_key"]
     .filter(
@@ -655,9 +778,10 @@ api.put("/admin/content/:id", async (req, res) => {
       one("SELECT id FROM uploads WHERE storage_key=?", [key]),
     ),
   );
-  const cleanupPending = await cleanupUploadsIfUnreferenced(
-    replacedUploads.filter(Boolean).map((upload: any) => upload.id),
-  );
+  const cleanupPending = await cleanupUploadsIfUnreferenced([
+    ...replacedUploads.filter(Boolean).map((upload: any) => upload.id),
+    ...previousAssets.map((upload: any) => upload.upload_id),
+  ]);
   res.json({ ok: true, cleanupPending });
 });
 api.delete("/admin/content/:id", async (req, res) => {
@@ -693,11 +817,16 @@ api.delete("/admin/content/:id", async (req, res) => {
       one("SELECT id FROM uploads WHERE storage_key=?", [key]),
     ),
   );
+  const deletedAssetUploads = await query(
+    `SELECT a.upload_id FROM content_assets a WHERE a.content_id IN (${[...deletedIds].map(() => "?").join(",")})`,
+    [...deletedIds],
+  );
   await run("DELETE FROM content WHERE id=?", [req.params.id]);
   await audit(uid(req), "content.delete", req.params.id as string);
-  const cleanupPending = await cleanupUploadsIfUnreferenced(
-    deletedUploads.filter(Boolean).map((upload: any) => upload.id),
-  );
+  const cleanupPending = await cleanupUploadsIfUnreferenced([
+    ...deletedUploads.filter(Boolean).map((upload: any) => upload.id),
+    ...deletedAssetUploads.map((upload: any) => upload.upload_id),
+  ]);
   res.json({ ok: true, cleanupPending });
 });
 api.post("/admin/groups", async (req, res) => {
