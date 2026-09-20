@@ -2540,6 +2540,104 @@ a:focus-visible {
   font-size: 10px;
   color: #8a9b78;
 }
+.subject-curriculum {
+  display: grid;
+  gap: 18px;
+}
+.module-card {
+  overflow: hidden;
+  border: 1px solid #dfe6d5;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(42, 74, 53, 0.05);
+}
+.module-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 20px 22px;
+  background: linear-gradient(120deg, #f2f5e9, #fafbf6);
+  border-bottom: 1px solid #e3e8d9;
+}
+.module-number {
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: #2c5a43;
+  color: #f7faef;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+.module-heading h3 {
+  margin: 0;
+  color: #244536;
+  font-family: Georgia, serif;
+  font-size: 19px;
+}
+.module-heading p,
+.chapter-heading p {
+  margin: 5px 0 0;
+  color: #849078;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.module-count {
+  color: #718266;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.module-chapters {
+  display: grid;
+}
+.chapter-group {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.55fr) minmax(0, 1fr);
+  gap: 22px;
+  padding: 20px 22px;
+}
+.chapter-group + .chapter-group {
+  border-top: 1px solid #edf0e8;
+}
+.chapter-heading {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 11px;
+  align-content: start;
+}
+.chapter-heading > span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #eef2e6;
+  color: #6f845f;
+  font-size: 10px;
+  font-weight: 800;
+}
+.chapter-heading small {
+  color: #93a383;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+}
+.chapter-heading h4 {
+  margin: 4px 0 0;
+  color: #315442;
+  font-size: 13px;
+}
+.chapter-group .video-list {
+  gap: 7px;
+}
+.chapter-empty {
+  margin: 0;
+  padding: 15px;
+  border: 1px dashed #dfe5d4;
+  border-radius: 9px;
+  color: #87927d;
+  font-size: 10px;
+}
 .watch-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 270px;
@@ -5267,6 +5365,10 @@ th,
 .feedback-card p { margin-top:8px; white-space:pre-wrap; }
 .quiz-link { margin-top:14px; width:max-content; }
 @media (max-width: 800px) {
+  .module-heading { grid-template-columns:1fr; gap:10px; }
+  .module-number { width:max-content; }
+  .module-count { white-space:normal; }
+  .chapter-group { grid-template-columns:1fr; padding:18px 16px; }
   .coursework-grid { grid-template-columns:1fr; }
   .coursework-meta { grid-template-columns:1fr; }
   .student-assignment-card { grid-template-columns:1fr; }

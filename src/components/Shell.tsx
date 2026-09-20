@@ -31,6 +31,7 @@ import {
   api,
   Modal,
   Empty,
+  contentKindLabel,
 } from "../lib";
 const studentNav = [
   ["", "Overview", Home],
@@ -44,7 +45,7 @@ const adminNav = [
   ["students", "Students", Users],
   ["teachers", "Teachers", GraduationCap],
   ["groups", "Student groups", GraduationCap],
-  ["library", "Subjects & topics", Shapes],
+  ["library", "Subjects & modules", Shapes],
   ["materials", "Learning materials", FileText],
   ["assignments", "Assignments", ClipboardList],
   ["access", "Content access", KeyRound],
@@ -273,7 +274,7 @@ export default function Shell({
                       : `/app/subjects/${r.id}`
                 }
               >
-                <span className="eyebrow">{r.kind}</span>
+                <span className="eyebrow">{contentKindLabel(r.kind)}</span>
                 <b>{r.name}</b>
                 <p>{r.description?.slice(0, 120)}</p>
               </Link>

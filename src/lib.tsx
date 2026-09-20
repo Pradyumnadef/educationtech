@@ -410,6 +410,15 @@ export function descendants(node: Item, items: Item[]): Item[] {
   const children = items.filter((i) => i.parent_id === node.id);
   return [...children, ...children.flatMap((c) => descendants(c, items))];
 }
+export function contentKindLabel(kind: string, plural = false): string {
+  const labels: Record<string, [string, string]> = {
+    subject: ["subject", "subjects"],
+    chapter: ["module", "modules"],
+    topic: ["chapter", "chapters"],
+    video: ["learning material", "learning materials"],
+  };
+  return labels[kind]?.[plural ? 1 : 0] || kind;
+}
 export function CourseArt({
   theme = "math",
   large = false,

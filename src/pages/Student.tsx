@@ -54,6 +54,7 @@ import {
   date,
   Logo,
   uploadFile,
+  contentKindLabel,
 } from "../lib";
 export function ActivityChart({ events = [] }: { events: any[] }) {
   const days = Array.from({ length: 7 }, (_, i) => {
@@ -575,7 +576,10 @@ function SubjectDetail({ id, data }: { id: string; data: any }) {
       />
     );
   const children = descendants(node, items),
-    videos = children.filter((c) => c.kind === "video" && c.accessible);
+    videos = children.filter((c) => c.kind === "video" && c.accessible),
+    modules = items.filter(
+      (item) => item.kind === "chapter" && item.parent_id === node.id,
+    );
   return (
     <>
       <Link className="back-link" to="/app/subjects">
@@ -584,11 +588,15 @@ function SubjectDetail({ id, data }: { id: string; data: any }) {
       <div className="course-detail-hero">
         <div>
           <span className="eyebrow">
-            {node.kind.toUpperCase()} · {subjectOf(node, items).name}
+            {contentKindLabel(node.kind).toUpperCase()} ·{" "}
+            {subjectOf(node, items).name}
           </span>
           <h1>{node.name}</h1>
           <p>{node.description}</p>
           <div className="course-detail-meta">
+            <span>
+              <BookOpen size={15} /> {modules.length} modules
+            </span>
             <span>
               <Play size={15} /> {videos.length} lessons
             </span>
@@ -615,20 +623,95 @@ function SubjectDetail({ id, data }: { id: string; data: any }) {
       ) : (
         <>
           <div className="section-heading compact">
-            <h2>Your lessons</h2>
-            <span className="muted">One little discovery at a time.</span>
+            <h2>Your modules and chapters</h2>
+            <span className="muted">Open a chapter and start learning.</span>
           </div>
-          <div className="video-list">
-            {videos.map((v, i) => (
-              <VideoRow
-                key={v.id}
-                video={v}
-                index={i}
-                progress={data.progress.find((p: any) => p.video_id === v.id)}
-              />
-            ))}
+          <div className="subject-curriculum">
+            {modules.map((module, moduleIndex) => {
+              const chapters = items.filter(
+                (item) => item.kind === "topic" && item.parent_id === module.id,
+              );
+              const moduleVideos = descendants(module, items).filter(
+                (item) => item.kind === "video" && item.accessible,
+              );
+              return (
+                <section className="module-card" key={module.id}>
+                  <header className="module-heading">
+                    <span className="module-number">
+                      MODULE {String(moduleIndex + 1).padStart(2, "0")}
+                    </span>
+                    <div>
+                      <h3>{module.name}</h3>
+                      {module.description && <p>{module.description}</p>}
+                    </div>
+                    <span className="module-count">
+                      {chapters.length}{" "}
+                      {chapters.length === 1 ? "chapter" : "chapters"}
+                      {" · "}
+                      {moduleVideos.length}{" "}
+                      {moduleVideos.length === 1 ? "lesson" : "lessons"}
+                    </span>
+                  </header>
+                  <div className="module-chapters">
+                    {chapters.map((chapter, chapterIndex) => {
+                      const chapterVideos = items.filter(
+                        (item) =>
+                          item.kind === "video" &&
+                          item.parent_id === chapter.id &&
+                          item.accessible,
+                      );
+                      return (
+                        <div className="chapter-group" key={chapter.id}>
+                          <div className="chapter-heading">
+                            <span>
+                              {String(chapterIndex + 1).padStart(2, "0")}
+                            </span>
+                            <div>
+                              <small>CHAPTER</small>
+                              <h4>{chapter.name}</h4>
+                              {chapter.description && (
+                                <p>{chapter.description}</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="video-list">
+                            {chapterVideos.map((video, videoIndex) => (
+                              <VideoRow
+                                key={video.id}
+                                video={video}
+                                index={videoIndex}
+                                progress={data.progress.find(
+                                  (progress: any) =>
+                                    progress.video_id === video.id,
+                                )}
+                              />
+                            ))}
+                            {!chapterVideos.length && (
+                              <p className="chapter-empty">
+                                Your teacher has not added learning materials to
+                                this chapter yet.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {!chapters.length && (
+                      <p className="chapter-empty">
+                        Your teacher has not added chapters to this module yet.
+                      </p>
+                    )}
+                  </div>
+                </section>
+              );
+            })}
           </div>
-          {!videos.length && <Empty />}
+          {!modules.length && (
+            <Empty
+              title="No modules here yet"
+              description="Your teacher will add modules and chapters to this subject."
+            />
+          )}
         </>
       )}
     </>
@@ -728,7 +811,8 @@ function Watch({
                   if (ref.current) {
                     let localPosition = 0;
                     try {
-                      localPosition = Number(localStorage.getItem(positionKey)) || 0;
+                      localPosition =
+                        Number(localStorage.getItem(positionKey)) || 0;
                     } catch {}
                     ref.current.currentTime = Math.min(
                       Math.max(lesson.progress?.position || 0, localPosition),
@@ -740,7 +824,8 @@ function Watch({
                 }}
                 onTimeUpdate={() => {
                   const video = ref.current;
-                  if (!video || Date.now() - lastLocalSave.current < 1000) return;
+                  if (!video || Date.now() - lastLocalSave.current < 1000)
+                    return;
                   lastLocalSave.current = Date.now();
                   rememberPosition(video.currentTime);
                 }}
@@ -1682,7 +1767,7 @@ function Onboarding() {
             [
               "A space for your ideas, your questions, and your possibility. What should we call you?",
               "Pick the subjects you’d love to explore. You can always change these later.",
-              "Are there particular topics you’d love to understand?",
+              "Are there particular learning goals you’d love to achieve?",
               "Your teacher will bring the right lessons into your space. Until then, make yourself at home.",
             ][step]
           }
@@ -1724,8 +1809,8 @@ function Onboarding() {
         )}
         {step === 2 && (
           <Field
-            label="Topics you’re interested in (optional)"
-            hint="Separate topics with commas. Interests do not grant access to lessons."
+            label="Learning goals (optional)"
+            hint="Separate goals with commas. Interests do not grant access to lessons."
           >
             <textarea
               rows={4}

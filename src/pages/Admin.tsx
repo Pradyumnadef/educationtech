@@ -58,6 +58,7 @@ import {
   mins,
   date,
   uploadFile,
+  contentKindLabel,
 } from "../lib";
 import { ActivityChart, Stat, Profile } from "./Student";
 export default function Admin() {
@@ -892,13 +893,7 @@ function ContentLibrary({ initialKind, data, refresh }: any) {
     />
   );
 }
-function Content({
-  kind,
-  data,
-  refresh,
-  merged = false,
-  onKindChange,
-}: any) {
+function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
   const [q, setQ] = useState(
       new URLSearchParams(useLocation().search).get("q") || "",
     ),
@@ -908,8 +903,8 @@ function Content({
     [confirm, setConfirm] = useState<Item | null>(null),
     toast = useToast();
   const debounced = useDebounced(q);
-  const itemLabel = kind === "video" ? "learning material" : kind;
-  const pluralLabel = kind === "video" ? "learning materials" : `${kind}s`;
+  const itemLabel = contentKindLabel(kind);
+  const pluralLabel = contentKindLabel(kind, true);
   const rows = data.content.filter(
     (c: Item) =>
       c.kind === kind &&
@@ -923,19 +918,19 @@ function Content({
       <Heading
         title={
           merged
-            ? "Subjects, chapters, and topics."
+            ? "Subjects, modules, and chapters."
             : kind === "video"
               ? "Learning materials, all in one place."
-            : `Make room for ${kind === "subject" ? "curiosity" : "the next chapter"}.`
+              : `Make room for ${kind === "subject" ? "curiosity" : "the next chapter"}.`
         }
         description={
           merged
-            ? "Build your curriculum in one section, from broad subjects to focused learning topics."
+            ? "Build a simple learning path: subject, module, chapter, then learning materials."
             : kind === "video"
               ? "Manage lesson videos, captions, downloadable files, notes, and publishing details."
-            : kind === "subject"
-            ? "English and UHV are ready. Add any new subject here whenever you need it."
-            : `Organize your ${kind}s into thoughtful, connected learning experiences.`
+              : kind === "subject"
+                ? "English and UHV are ready. Add any new subject here whenever you need it."
+                : `Organize your ${pluralLabel} into clear, connected learning experiences.`
         }
       >
         <Button onClick={() => setEditor({ kind })}>
@@ -957,7 +952,9 @@ function Content({
               onClick={() => onKindChange(type)}
               key={type}
             >
-              {type[0].toUpperCase() + type.slice(1)}s
+              {contentKindLabel(type, true).replace(/^./, (c) =>
+                c.toUpperCase(),
+              )}
             </button>
           ))}
         </div>
@@ -1024,7 +1021,7 @@ function Content({
                       <b>{c.name}</b>
                       <small>
                         {c.tags?.slice(0, 2).join(" · ") ||
-                          `A ${kind} of possibilities`}
+                          `A ${itemLabel} of possibilities`}
                       </small>
                     </span>
                   </button>
@@ -1093,7 +1090,7 @@ function Content({
       {confirm && (
         <Confirm
           title={`Delete “${confirm.name}”?`}
-          description="This permanently deletes this content, all nested content, assignments, and associated progress. Stored media should be removed separately according to your retention policy."
+          description="This permanently deletes this content, all nested content, assignments, associated progress, and unused stored files."
           onClose={() => setConfirm(null)}
           onConfirm={async () => {
             await del(`/admin/content/${confirm.id}`);
@@ -1130,8 +1127,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
       item.uploaded_files || {},
     ),
     toast = useToast();
-  const kindLabel =
-    form.kind === "video" ? "learning material" : form.kind;
+  const kindLabel = contentKindLabel(form.kind);
   const videoLimit = Number(uploadLimits?.video || 50 * 1024 ** 2);
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
   const parentKind: Record<string, string> = {
@@ -1192,7 +1188,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
           try {
             if (form.kind !== "subject" && !form.parent_id)
               throw new Error(
-                `Create and select a ${parentKind[form.kind]} first.`,
+                `Create and select a ${contentKindLabel(parentKind[form.kind])} first.`,
               );
             const payload = {
               ...form,
@@ -1224,13 +1220,17 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
               />
             </Field>
             {form.kind !== "subject" && (
-              <Field label={`Parent ${parentKind[form.kind]}`}>
+              <Field
+                label={`Parent ${contentKindLabel(parentKind[form.kind])}`}
+              >
                 <select
                   value={form.parent_id || ""}
                   onChange={(e) => set("parent_id", e.target.value)}
                   required
                 >
-                  <option value="">Select {parentKind[form.kind]}</option>
+                  <option value="">
+                    Select {contentKindLabel(parentKind[form.kind])}
+                  </option>
                   {parents.map((p: Item) => (
                     <option key={p.id} value={p.id}>
                       {pathOf(p, data.content)}
@@ -1239,7 +1239,8 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
                 </select>
                 {!parents.length && (
                   <small>
-                    Create a {parentKind[form.kind]} in your library first.
+                    Create a {contentKindLabel(parentKind[form.kind])} in your
+                    library first.
                   </small>
                 )}
               </Field>
@@ -1384,7 +1385,9 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
                       to view
                     </span>
                   </div>
-                  <span className="file-ready"><Check size={13} /> Uploaded</span>
+                  <span className="file-ready">
+                    <Check size={13} /> Uploaded
+                  </span>
                 </div>
                 <video
                   controls
@@ -1575,7 +1578,9 @@ function UploadedFile({ file, label, onRemove }: any) {
       </div>
       <div className="uploaded-file-meta">
         <strong>{file.filename}</strong>
-        <span>{label} · {formatFileSize(file.size)}</span>
+        <span>
+          {label} · {formatFileSize(file.size)}
+        </span>
       </div>
       <a
         className="file-action"
@@ -2251,7 +2256,9 @@ function Assignments({ data, refresh }: any) {
                 }}
               >
                 {["subject", "chapter", "topic", "video"].map((k) => (
-                  <option key={k}>{k}</option>
+                  <option key={k} value={k}>
+                    {contentKindLabel(k).replace(/^./, (c) => c.toUpperCase())}
+                  </option>
                 ))}
               </select>
             </Field>
@@ -2335,7 +2342,7 @@ function Assignments({ data, refresh }: any) {
               securely theirs.
             </h2>
             <p>
-              Assigning a subject, chapter, or topic includes its published
+              Assigning a subject, module, or chapter includes its published
               lessons and future additions.
             </p>
             <p>

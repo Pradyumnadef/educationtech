@@ -557,7 +557,9 @@ async function validateContent(b: any, recordId?: string) {
       video: "topic",
     };
     if (parent?.kind !== expected[b.kind] || b.parent_id === recordId)
-      bad(`Select a valid ${expected[b.kind]}.`);
+      bad(
+        `Select a valid ${{ subject: "subject", chapter: "module", topic: "chapter" }[expected[b.kind]]}.`,
+      );
   }
   if (b.kind !== "subject") b.public = 0;
   for (const [field, mime] of [
