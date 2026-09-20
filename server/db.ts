@@ -98,12 +98,6 @@ export async function update(
 }
 export async function initDB() {
   if (pool && process.env.DATABASE_MANAGED_SCHEMA === "true") {
-    await run(
-      `CREATE TABLE IF NOT EXISTS content_assets (id TEXT PRIMARY KEY, content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE, upload_id TEXT NOT NULL REFERENCES uploads(id) ON DELETE CASCADE, asset_type TEXT NOT NULL CHECK(asset_type IN ('video','file')), sort_order INTEGER NOT NULL DEFAULT 0, UNIQUE(content_id,upload_id))`,
-    );
-    await run(
-      "CREATE INDEX IF NOT EXISTS idx_content_assets_content ON content_assets(content_id,asset_type,sort_order)",
-    );
     await query("SELECT id FROM platform_owner LIMIT 1");
     return;
   }

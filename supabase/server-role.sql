@@ -32,6 +32,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.settings TO english_tech_server;
 CREATE POLICY server_access ON public.settings FOR ALL TO english_tech_server USING (true) WITH CHECK (true);
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.uploads TO english_tech_server;
 CREATE POLICY server_access ON public.uploads FOR ALL TO english_tech_server USING (true) WITH CHECK (true);
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.content_assets TO english_tech_server;
+CREATE POLICY server_access ON public.content_assets FOR ALL TO english_tech_server USING (true) WITH CHECK (true);
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.learning_assignments TO english_tech_server;
 CREATE POLICY server_access ON public.learning_assignments FOR ALL TO english_tech_server USING (true) WITH CHECK (true);
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.assignment_targets TO english_tech_server;
