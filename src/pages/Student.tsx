@@ -24,6 +24,7 @@ import {
   Camera,
   ClipboardList,
   FileText,
+  Folder,
   Upload,
   Timer,
   AlertTriangle,
@@ -158,13 +159,13 @@ function Overview({ data }: { data: any }) {
   const nextSubject =
     next &&
     subjects.find((s) => descendants(s, items).some((i) => i.id === next.id));
-  let nextModule: Item | undefined;
+  let nextFolder: Item | undefined;
   if (next) {
     let current: Item | undefined = next;
     let steps = 0;
     while (current && steps++ < 10) {
-      if (current.kind === "chapter") {
-        nextModule = current;
+      if (["folder", "chapter", "topic", "subject"].includes(current.kind)) {
+        nextFolder = current;
         break;
       }
       current = items.find((item) => item.id === current?.parent_id);
@@ -221,8 +222,8 @@ function Overview({ data }: { data: any }) {
           <Link
             className="button cream"
             to={
-              nextModule
-                ? `/app/videos?module=${encodeURIComponent(nextModule.id)}`
+              nextFolder
+                ? `/app/videos?folder=${encodeURIComponent(nextFolder.id)}`
                 : next
                   ? "/app/videos"
                   : "/app/subjects"
@@ -557,275 +558,230 @@ function fileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 function LearningMaterials({ data }: { data: any }) {
+  return <StudentDrive data={data} basePath="/app/videos" />;
+}
+function StudentDrive({
+  data,
+  basePath,
+  subjectId,
+}: {
+  data: any;
+  basePath: string;
+  subjectId?: string;
+}) {
+  const location = useLocation();
   const [tab, setTab] = useState<"videos" | "documents">("videos");
   const [search, setSearch] = useState("");
-  const location = useLocation();
-  const debounced = useDebounced(search);
   const items: Item[] = data.content;
-  const selectedModuleId = new URLSearchParams(location.search).get("module");
-  useEffect(() => {
-    setSearch("");
-    setTab("videos");
-  }, [selectedModuleId]);
-  const selectedModule = items.find(
+  const requestedId = new URLSearchParams(location.search).get("folder");
+  const currentId = requestedId || subjectId || "";
+  const current = items.find(
     (item) =>
-      item.id === selectedModuleId &&
-      item.kind === "chapter" &&
-      item.accessible,
+      item.id === currentId &&
+      ["subject", "folder", "chapter", "topic"].includes(item.kind),
   );
-  const allLessons = items.filter(
-    (item) => item.kind === "video" && item.accessible,
-  );
-  const matches = (value: string) =>
-    value.toLowerCase().includes(debounced.toLowerCase());
-  const moduleGroups = items
-    .filter((item) => item.kind === "chapter" && item.accessible)
-    .map((module) => {
-      const moduleIds = new Set([
-        module.id,
-        ...descendants(module, items).map((item) => item.id),
-      ]);
-      const lessons = allLessons.filter((lesson) => moduleIds.has(lesson.id));
-      return {
-        module,
-        subject: subjectOf(module, items),
-        lessons,
-        videoCount: lessons.reduce(
-          (total, lesson) => total + Number(lesson.video_count || 0),
-          0,
-        ),
-        documentCount: lessons.reduce(
-          (total, lesson) => total + Number(lesson.file_count || 0),
-          0,
-        ),
-      };
-    })
-    .filter(
-      (group) =>
-        (group.videoCount > 0 || group.documentCount > 0) &&
-        matches(
-          `${group.subject.name} ${group.module.name} ${group.module.description} ${group.lessons.map((lesson) => lesson.name).join(" ")}`,
-        ),
-    );
-  if (!selectedModule) {
-    const subjects = Array.from(
-      new Map(
-        moduleGroups.map((group) => [group.subject.id, group.subject]),
-      ).values(),
-    );
-    return (
-      <>
-        <div className="page-heading">
-          <div>
-            <span className="eyebrow">YOUR LEARNING LIBRARY</span>
-            <h1>Learning materials</h1>
-            <p>Choose a subject and module to see its videos and documents.</p>
-          </div>
-        </div>
-        <div className="student-material-toolbar module-library-search">
-          <label className="search-box">
-            <Search size={17} />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search subjects or modules…"
-              aria-label="Search subjects or modules"
-            />
-          </label>
-          <span>
-            {moduleGroups.length}{" "}
-            {moduleGroups.length === 1 ? "module" : "modules"}
-          </span>
-        </div>
-        {!moduleGroups.length ? (
-          <Empty
-            title={
-              search ? "No modules found" : "No learning materials assigned yet"
-            }
-            description={
-              search
-                ? "Try a different subject or module name."
-                : "Your teacher will share modules and learning materials here."
-            }
-          />
-        ) : (
-          <div className="student-subject-materials">
-            {subjects.map((subject) => {
-              const subjectModules = moduleGroups.filter(
-                (group) => group.subject.id === subject.id,
-              );
-              return (
-                <section className="student-subject-group" key={subject.id}>
-                  <header>
-                    <span className="student-subject-icon">
-                      <BookOpen size={19} />
-                    </span>
-                    <div>
-                      <span className="eyebrow">SUBJECT</span>
-                      <h2>{subject.name}</h2>
-                    </div>
-                    <span>
-                      {subjectModules.length}{" "}
-                      {subjectModules.length === 1 ? "module" : "modules"}
-                    </span>
-                  </header>
-                  <div className="student-module-grid">
-                    {subjectModules.map((group) => (
-                      <Link
-                        className="student-module-card"
-                        to={`/app/videos?module=${encodeURIComponent(group.module.id)}`}
-                        key={group.module.id}
-                      >
-                        <span className="student-module-label">MODULE</span>
-                        <h3>{group.module.name}</h3>
-                        {group.module.description && (
-                          <p>{group.module.description}</p>
-                        )}
-                        <div>
-                          <span>
-                            <Play size={14} /> {group.videoCount} videos
-                          </span>
-                          <span>
-                            <FileText size={14} /> {group.documentCount}{" "}
-                            documents
-                          </span>
-                        </div>
-                        <strong>
-                          Open module <ArrowRight size={15} />
-                        </strong>
-                      </Link>
-                    ))}
-                  </div>
-                </section>
-              );
-            })}
-          </div>
-        )}
-      </>
-    );
-  }
-  const selectedIds = new Set([
-    selectedModule.id,
-    ...descendants(selectedModule, items).map((item) => item.id),
-  ]);
-  const lessons = allLessons.filter((lesson) => selectedIds.has(lesson.id));
-  const selectedSubject = subjectOf(selectedModule, items);
-  const videos = lessons.filter(
+  const isContainer = (item: Item) =>
+    ["subject", "folder", "chapter", "topic"].includes(item.kind);
+  const rootFolders = subjectId
+    ? []
+    : items.filter(
+        (item) =>
+          item.kind === "subject" && (item.accessible || item.container),
+      );
+  const directChildren = current
+    ? items.filter((item) => item.parent_id === current.id)
+    : rootFolders;
+  const matches = (item: Item) =>
+    `${item.name} ${item.description}`
+      .toLowerCase()
+      .includes(search.toLowerCase());
+  const folders = directChildren.filter(
     (item) =>
-      Number(item.video_count) > 0 &&
-      matches(
-        `${item.name} ${item.description} ${(item.assets || []).map((asset) => asset.filename).join(" ")}`,
-      ),
+      isContainer(item) && (item.accessible || item.container) && matches(item),
   );
-  const documents = lessons.flatMap((lesson) =>
-    (lesson.assets || [])
+  const materials = directChildren.filter(
+    (item) => item.kind === "video" && item.accessible && matches(item),
+  );
+  const videos = materials.filter((item) => Number(item.video_count || 0) > 0);
+  const documents = materials.flatMap((material) =>
+    (material.assets || [])
       .filter(
         (asset) =>
           asset.asset_type === "file" &&
-          matches(`${asset.filename} ${lesson.name} ${lesson.description}`),
+          `${asset.filename} ${material.name}`
+            .toLowerCase()
+            .includes(search.toLowerCase()),
       )
-      .map((asset) => ({ asset, lesson })),
+      .map((asset) => ({ asset, material })),
   );
+  const trail: Item[] = [];
+  if (current) {
+    let node: Item | undefined = current;
+    const seen = new Set<string>();
+    while (node && !seen.has(node.id)) {
+      seen.add(node.id);
+      trail.unshift(node);
+      node = items.find((item) => item.id === node?.parent_id);
+    }
+  }
+  const linkFor = (folder: Item) =>
+    subjectId && folder.id === subjectId
+      ? basePath
+      : `${basePath}?folder=${encodeURIComponent(folder.id)}`;
   const visibleCount = tab === "videos" ? videos.length : documents.length;
   return (
     <>
-      <Link className="back-link" to="/app/videos">
-        <ArrowLeft size={15} /> All subjects and modules
-      </Link>
-      <div className="page-heading">
+      <div className="page-heading drive-student-heading">
         <div>
-          <span className="eyebrow">{selectedSubject.name} · MODULE</span>
-          <h1>{selectedModule.name}</h1>
+          <span className="eyebrow">YOUR LEARNING DRIVE</span>
+          <h1>{current?.name || "Learning materials"}</h1>
           <p>
-            Choose Videos or Documents to open the materials in this module.
+            {current
+              ? "Open a folder or choose Videos and Documents below."
+              : "Choose a subject to browse the content your teacher shared with you."}
           </p>
         </div>
       </div>
-      <div
-        className="material-library-tabs student-material-tabs"
-        role="tablist"
-        aria-label="Learning material type"
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "videos"}
-          className={tab === "videos" ? "active" : ""}
-          onClick={() => setTab("videos")}
-        >
-          <Play size={17} /> Videos <span>{videos.length}</span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "documents"}
-          className={tab === "documents" ? "active" : ""}
-          onClick={() => setTab("documents")}
-        >
-          <FileText size={17} /> Documents <span>{documents.length}</span>
-        </button>
-      </div>
-      <div className="student-material-toolbar">
+      <nav className="drive-breadcrumbs" aria-label="Current folder">
+        <Link to={basePath}>
+          {subjectId ? "Subject" : "Learning materials"}
+        </Link>
+        {trail.map((crumb) => (
+          <span key={crumb.id}>
+            <ChevronRight size={15} />
+            <Link to={linkFor(crumb)}>{crumb.name}</Link>
+          </span>
+        ))}
+      </nav>
+      <div className="drive-toolbar student-drive-toolbar">
         <label className="search-box">
           <Search size={17} />
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder={`Search ${tab}…`}
-            aria-label={`Search ${tab}`}
+            placeholder="Search this folder…"
+            aria-label="Search this folder"
           />
         </label>
-        <span>
-          {visibleCount} {visibleCount === 1 ? "item" : "items"}
-        </span>
       </div>
-      {!visibleCount ? (
-        <Empty
-          title={search ? `No ${tab} found` : `No ${tab} assigned yet`}
-          description={
-            search
-              ? "Try a different search."
-              : "Your teacher will share learning materials here."
-          }
-        />
-      ) : tab === "videos" ? (
-        <div className="video-list">
-          {videos.map((video, index) => (
-            <VideoRow
-              key={video.id}
-              video={video}
-              index={index}
-              progress={data.progress.find(
-                (entry: any) => entry.video_id === video.id,
-              )}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="student-document-list">
-          {documents.map(({ asset, lesson }) => (
-            <a
-              className="student-document-row"
-              href={asset.url}
-              target="_blank"
-              rel="noreferrer"
-              key={`${lesson.id}-${asset.id}`}
+      {!!folders.length && (
+        <section className="drive-section">
+          <div className="section-heading compact">
+            <h2>{current ? "Folders" : "Subjects"}</h2>
+          </div>
+          <div className="drive-folder-grid student-drive-folders">
+            {folders.map((folder) => {
+              const nested = descendants(folder, items);
+              const folderVideos = nested.filter(
+                (item) => item.kind === "video" && item.accessible,
+              );
+              const videoCount = folderVideos.reduce(
+                (total, item) => total + Number(item.video_count || 0),
+                0,
+              );
+              const documentCount = folderVideos.reduce(
+                (total, item) => total + Number(item.file_count || 0),
+                0,
+              );
+              return (
+                <Link
+                  className="drive-folder-card"
+                  to={linkFor(folder)}
+                  key={folder.id}
+                >
+                  <span className="drive-folder-icon">
+                    <Folder size={23} />
+                  </span>
+                  <span>
+                    <strong>{folder.name}</strong>
+                    <small>
+                      {videoCount} videos · {documentCount} documents
+                    </small>
+                  </span>
+                  <ChevronRight size={18} />
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
+      {current && (
+        <>
+          <div
+            className="material-library-tabs student-material-tabs"
+            role="tablist"
+            aria-label="Learning material type"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "videos"}
+              className={tab === "videos" ? "active" : ""}
+              onClick={() => setTab("videos")}
             >
-              <span className="student-document-icon">
-                <FileText size={20} />
-              </span>
-              <span className="student-document-copy">
-                <strong>{asset.filename}</strong>
-                <small>
-                  {lesson.name} · {fileSize(asset.size)}
-                </small>
-              </span>
-              <span className="student-document-action">
-                Open <ArrowUpRight size={16} />
-              </span>
-            </a>
-          ))}
-        </div>
+              <Play size={17} /> Videos <span>{videos.length}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "documents"}
+              className={tab === "documents" ? "active" : ""}
+              onClick={() => setTab("documents")}
+            >
+              <FileText size={17} /> Documents <span>{documents.length}</span>
+            </button>
+          </div>
+          {!visibleCount ? (
+            <Empty
+              title={`No ${tab} in this folder`}
+              description="Open another folder or ask your teacher to add content here."
+            />
+          ) : tab === "videos" ? (
+            <div className="video-list">
+              {videos.map((video, index) => (
+                <VideoRow
+                  key={video.id}
+                  video={video}
+                  index={index}
+                  progress={data.progress.find(
+                    (entry: any) => entry.video_id === video.id,
+                  )}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="student-document-list">
+              {documents.map(({ asset, material }) => (
+                <a
+                  className="student-document-row"
+                  href={asset.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  key={`${material.id}-${asset.id}`}
+                >
+                  <span className="student-document-icon">
+                    <FileText size={20} />
+                  </span>
+                  <span className="student-document-copy">
+                    <strong>{asset.filename}</strong>
+                    <small>
+                      {material.name} · {fileSize(asset.size)}
+                    </small>
+                  </span>
+                  <span className="student-document-action">
+                    Open <ArrowUpRight size={16} />
+                  </span>
+                </a>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      {!current && !folders.length && (
+        <Empty
+          title="No learning materials assigned yet"
+          description="Your teacher will share subjects, folders, videos, and documents here."
+        />
       )}
     </>
   );
@@ -864,132 +820,25 @@ function VideoRow({
   );
 }
 function SubjectDetail({ id, data }: { id: string; data: any }) {
-  const items: Item[] = data.content,
-    node = items.find((n) => n.id === id);
+  const node = (data.content as Item[]).find((item) => item.id === id);
   if (!node)
     return (
       <Empty
-        title="This learning path isn’t available"
-        description="Return to your library to see the content shared with you."
+        title="This subject isn’t available"
+        description="Return to My subjects to see the content shared with you."
       />
     );
-  const children = descendants(node, items),
-    videos = children.filter((c) => c.kind === "video" && c.accessible),
-    modules = items.filter(
-      (item) => item.kind === "chapter" && item.parent_id === node.id,
-    ),
-    firstModule = modules.find((module) =>
-      descendants(module, items).some(
-        (item) => item.kind === "video" && item.accessible,
-      ),
+  if (node.locked)
+    return (
+      <Empty
+        title="This subject has not been assigned"
+        description="Ask your teacher for access to this subject."
+      >
+        <Lock size={24} />
+      </Empty>
     );
   return (
-    <>
-      <Link className="back-link" to="/app/subjects">
-        <ArrowLeft size={15} /> Your subjects
-      </Link>
-      <div className="course-detail-hero">
-        <div>
-          <span className="eyebrow">
-            {contentKindLabel(node.kind).toUpperCase()} ·{" "}
-            {subjectOf(node, items).name}
-          </span>
-          <h1>{node.name}</h1>
-          <p>{node.description}</p>
-          <div className="course-detail-meta">
-            <span>
-              <BookOpen size={15} /> {modules.length} modules
-            </span>
-            <span>
-              <Play size={15} /> {videos.length} lessons
-            </span>
-            <span>
-              <Clock size={15} />{" "}
-              {mins(videos.reduce((a, v) => a + v.duration, 0))}
-            </span>
-          </div>
-          {firstModule && (
-            <Link
-              className="button"
-              to={`/app/videos?module=${encodeURIComponent(firstModule.id)}`}
-            >
-              Start learning <ArrowRight size={17} />
-            </Link>
-          )}
-        </div>
-        <CourseArt theme={node.thumbnail} large />
-      </div>
-      {node.locked ? (
-        <Empty
-          title="A possibility for another day"
-          description="This content has not been assigned to your account yet. Let your teacher know you’re interested."
-        >
-          <Lock size={24} />
-        </Empty>
-      ) : (
-        <>
-          <div className="section-heading compact">
-            <h2>Your modules</h2>
-            <span className="muted">Choose a module to see its materials.</span>
-          </div>
-          <div className="subject-curriculum">
-            {modules.map((module, moduleIndex) => {
-              const moduleVideos = descendants(module, items).filter(
-                (item) => item.kind === "video" && item.accessible,
-              );
-              const videoCount = moduleVideos.reduce(
-                (total, material) => total + Number(material.video_count || 0),
-                0,
-              );
-              const documentCount = moduleVideos.reduce(
-                (total, material) => total + Number(material.file_count || 0),
-                0,
-              );
-              return (
-                <Link
-                  className="module-card module-card-link"
-                  to={`/app/videos?module=${encodeURIComponent(module.id)}`}
-                  key={module.id}
-                >
-                  <div className="module-heading">
-                    <span className="module-number">
-                      MODULE {String(moduleIndex + 1).padStart(2, "0")}
-                    </span>
-                    <div>
-                      <h3>{module.name}</h3>
-                      {module.description && <p>{module.description}</p>}
-                    </div>
-                    <span className="module-count">
-                      Open module
-                      <ArrowRight size={15} />
-                    </span>
-                  </div>
-                  <div className="module-material-summary">
-                    <span>
-                      <Play size={15} /> {videoCount}{" "}
-                      {videoCount === 1 ? "video" : "videos"}
-                    </span>
-                    <span>
-                      <FileText size={15} /> {documentCount}{" "}
-                      {documentCount === 1 ? "document" : "documents"}
-                    </span>
-                    {!videoCount && !documentCount && (
-                      <small>No materials have been added yet.</small>
-                    )}
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-          {!modules.length && (
-            <Empty
-              title="No modules here yet"
-              description="Your teacher will add modules and learning materials to this subject."
-            />
-          )}
-        </>
-      )}
-    </>
+    <StudentDrive data={data} basePath={`/app/subjects/${id}`} subjectId={id} />
   );
 }
 function Watch({
@@ -1020,17 +869,11 @@ function Watch({
     } catch {}
   };
   const items: Item[] = data.content;
-  const moduleIdFor = (item?: Item) => {
-    let current = item;
-    let steps = 0;
-    while (current && current.kind !== "chapter" && steps++ < 10)
-      current = items.find((candidate) => candidate.id === current?.parent_id);
-    return current?.id;
-  };
-  const activeModuleId = moduleIdFor(items.find((item) => item.id === videoId));
+  const activeItem = items.find((item) => item.id === videoId);
+  const activeFolderId = activeItem?.parent_id || "";
   const related = items.filter(
       (i) =>
-        i.kind === "video" && i.accessible && moduleIdFor(i) === activeModuleId,
+        i.kind === "video" && i.accessible && i.parent_id === activeFolderId,
     ),
     index = related.findIndex((i) => i.id === videoId);
   const save = async (complete = false) => {
@@ -1082,12 +925,12 @@ function Watch({
       <Link
         className="back-link"
         to={
-          activeModuleId
-            ? `/app/videos?module=${activeModuleId}`
+          activeFolderId
+            ? `/app/videos?folder=${activeFolderId}`
             : "/app/videos"
         }
       >
-        <ArrowLeft size={15} /> Module materials
+        <ArrowLeft size={15} /> Folder materials
       </Link>
       <div className="watch-layout">
         <div>

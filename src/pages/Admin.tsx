@@ -31,6 +31,9 @@ import {
   FileText,
   Timer,
   Eye,
+  Folder,
+  FolderPlus,
+  ChevronRight,
 } from "lucide-react";
 import Teachers from "./Teachers";
 import Shell from "../components/Shell";
@@ -73,24 +76,10 @@ export default function Admin() {
   else if (route === "students")
     body = <Students key={location.search} data={data} refresh={refresh} />;
   else if (route === "groups") body = <Groups data={data} refresh={refresh} />;
-  else if (["library", "subjects", "chapters"].includes(route))
-    body = (
-      <ContentLibrary
-        key={route + location.search}
-        initialKind={route === "library" ? undefined : route.slice(0, -1)}
-        data={data}
-        refresh={refresh}
-      />
-    );
-  else if (["materials", "videos"].includes(route))
-    body = (
-      <Content
-        key={route + location.search}
-        kind="video"
-        data={data}
-        refresh={refresh}
-      />
-    );
+  else if (
+    ["library", "subjects", "chapters", "materials", "videos"].includes(route)
+  )
+    body = <ContentDrive key={location.search} data={data} refresh={refresh} />;
   else if (route === "assignments")
     body = <Coursework data={data} refresh={refresh} />;
   else if (route === "access")
@@ -875,6 +864,235 @@ function Groups({ data, refresh }: any) {
 function ArrowRightIcon() {
   return <ArrowUpRight size={16} />;
 }
+function ContentDrive({ data, refresh }: any) {
+  const location = useLocation();
+  const currentId = new URLSearchParams(location.search).get("folder");
+  const [query, setQuery] = useState("");
+  const [editor, setEditor] = useState<any>(null);
+  const [confirm, setConfirm] = useState<Item | null>(null);
+  const toast = useToast();
+  const items: Item[] = data.content;
+  const current = currentId
+    ? items.find(
+        (item) =>
+          item.id === currentId && ["subject", "folder"].includes(item.kind),
+      )
+    : undefined;
+  const children = items
+    .filter((item) =>
+      current ? item.parent_id === current.id : item.kind === "subject",
+    )
+    .filter((item) =>
+      `${item.name} ${item.description}`
+        .toLowerCase()
+        .includes(query.toLowerCase()),
+    );
+  const folders = children.filter((item) =>
+    ["subject", "folder"].includes(item.kind),
+  );
+  const materials = children.filter((item) => item.kind === "video");
+  const crumbs: Item[] = [];
+  if (current) {
+    let node: Item | undefined = current;
+    const seen = new Set<string>();
+    while (node && !seen.has(node.id)) {
+      seen.add(node.id);
+      crumbs.unshift(node);
+      node = items.find((item) => item.id === node?.parent_id);
+    }
+  }
+  const openEditor = async (item: Item) => {
+    try {
+      setEditor(await api(`/admin/content/${item.id}`));
+    } catch (error: any) {
+      toast(error.message, "error");
+    }
+  };
+  return (
+    <>
+      <Heading
+        title={current ? current.name : "Your content drive."}
+        description={
+          current
+            ? "Create folders inside folders, then upload videos and documents exactly where they belong."
+            : "Open a subject to organize its learning content with simple folders."
+        }
+      >
+        {!current ? (
+          <Button onClick={() => setEditor({ kind: "subject" })}>
+            <Plus size={17} /> New subject
+          </Button>
+        ) : (
+          <div className="drive-heading-actions">
+            <Button
+              variant="secondary"
+              onClick={() =>
+                setEditor({ kind: "folder", parent_id: current.id })
+              }
+            >
+              <FolderPlus size={17} /> New folder
+            </Button>
+            <Button
+              onClick={() =>
+                setEditor({
+                  kind: "video",
+                  parent_id: current.id,
+                  assetTab: "videos",
+                })
+              }
+            >
+              <Upload size={17} /> Upload
+            </Button>
+          </div>
+        )}
+      </Heading>
+      <nav className="drive-breadcrumbs" aria-label="Current folder">
+        <Link to="/admin/library">Content drive</Link>
+        {crumbs.map((crumb) => (
+          <span key={crumb.id}>
+            <ChevronRight size={15} />
+            <Link to={`/admin/library?folder=${encodeURIComponent(crumb.id)}`}>
+              {crumb.name}
+            </Link>
+          </span>
+        ))}
+      </nav>
+      <div className="drive-toolbar">
+        <label className="search-box">
+          <Search size={17} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search this folder…"
+            aria-label="Search this folder"
+          />
+        </label>
+        <span>{children.length} items</span>
+      </div>
+      {!!folders.length && (
+        <section className="drive-section">
+          <div className="section-heading compact">
+            <h2>{current ? "Folders" : "Subjects"}</h2>
+          </div>
+          <div className="drive-folder-grid">
+            {folders.map((folder) => (
+              <article className="drive-folder-card" key={folder.id}>
+                <Link
+                  to={`/admin/library?folder=${encodeURIComponent(folder.id)}`}
+                >
+                  <span className="drive-folder-icon">
+                    <Folder size={23} />
+                  </span>
+                  <span>
+                    <strong>{folder.name}</strong>
+                    <small>
+                      {
+                        items.filter((item) => item.parent_id === folder.id)
+                          .length
+                      }{" "}
+                      items
+                    </small>
+                  </span>
+                </Link>
+                <div className="drive-row-actions">
+                  <button
+                    className="icon-button"
+                    aria-label={`Edit ${folder.name}`}
+                    onClick={() => openEditor(folder)}
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    className="icon-button danger-text"
+                    aria-label={`Delete ${folder.name}`}
+                    onClick={() => setConfirm(folder)}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+      {!!materials.length && (
+        <section className="drive-section">
+          <div className="section-heading compact">
+            <h2>Files</h2>
+          </div>
+          <div className="drive-file-list">
+            {materials.map((material) => (
+              <article className="drive-file-row" key={material.id}>
+                <span className="drive-file-icon">
+                  {Number(material.video_count || 0) ? (
+                    <FileVideo size={20} />
+                  ) : (
+                    <FileText size={20} />
+                  )}
+                </span>
+                <button onClick={() => openEditor(material)}>
+                  <strong>{material.name}</strong>
+                  <small>
+                    {Number(material.video_count || 0)} videos ·{" "}
+                    {Number(material.file_count || 0)} documents
+                  </small>
+                </button>
+                <span className={`status ${material.status}`}>
+                  {material.status}
+                </span>
+                <button
+                  className="icon-button"
+                  aria-label={`Delete ${material.name}`}
+                  onClick={() => setConfirm(material)}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+      {!children.length && (
+        <Empty
+          title={
+            query
+              ? "Nothing found"
+              : current
+                ? "This folder is empty"
+                : "No subjects yet"
+          }
+          description={
+            query
+              ? "Try a different search."
+              : current
+                ? "Create a folder or upload videos and documents to begin."
+                : "Create your first subject to begin organizing content."
+          }
+        />
+      )}
+      {editor && (
+        <ContentEditor
+          item={editor}
+          data={data}
+          onClose={() => setEditor(null)}
+          refresh={refresh}
+        />
+      )}
+      {confirm && (
+        <Confirm
+          title={`Delete “${confirm.name}”?`}
+          description="This permanently deletes this item, its access grants, progress, and unused stored files."
+          onClose={() => setConfirm(null)}
+          onConfirm={async () => {
+            await del(`/admin/content/${confirm.id}`);
+            setConfirm(null);
+            refresh();
+          }}
+        />
+      )}
+    </>
+  );
+}
 function ContentLibrary({ initialKind, data, refresh }: any) {
   const requestedKind = new URLSearchParams(useLocation().search).get("type");
   const [kind, setKind] = useState(
@@ -1335,12 +1553,28 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
   const videoLimit = Number(uploadLimits?.video || 50 * 1024 ** 2);
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
   const parentKind: Record<string, string> = {
+    folder: "folder",
     chapter: "subject",
     topic: "chapter",
-    video: "chapter",
+    video: "folder",
   };
+  const parentKinds: Record<string, string[]> = {
+    folder: ["subject", "folder"],
+    video: ["subject", "folder"],
+    chapter: ["subject"],
+    topic: ["chapter"],
+  };
+  const blockedParentIds = new Set(
+    form.id
+      ? [
+          form.id,
+          ...descendants(form as Item, data.content).map((item) => item.id),
+        ]
+      : [],
+  );
   const parents = data.content.filter(
-    (c: Item) => c.kind === parentKind[form.kind],
+    (c: Item) =>
+      parentKinds[form.kind]?.includes(c.kind) && !blockedParentIds.has(c.id),
   );
   async function upload(file: File, field: string) {
     setUploading(field);
@@ -1429,9 +1663,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
           setBusy(true);
           try {
             if (form.kind !== "subject" && !form.parent_id)
-              throw new Error(
-                `Create and select a ${contentKindLabel(parentKind[form.kind])} first.`,
-              );
+              throw new Error("Choose a folder for this item first.");
             const payload = {
               ...form,
               storage_key:
@@ -1468,17 +1700,13 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
               />
             </Field>
             {form.kind !== "subject" && (
-              <Field
-                label={`Parent ${contentKindLabel(parentKind[form.kind])}`}
-              >
+              <Field label="Location">
                 <select
                   value={form.parent_id || ""}
                   onChange={(e) => set("parent_id", e.target.value)}
                   required
                 >
-                  <option value="">
-                    Select {contentKindLabel(parentKind[form.kind])}
-                  </option>
+                  <option value="">Select a subject or folder</option>
                   {parents.map((p: Item) => (
                     <option key={p.id} value={p.id}>
                       {pathOf(p, data.content)}
@@ -1486,10 +1714,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
                   ))}
                 </select>
                 {!parents.length && (
-                  <small>
-                    Create a {contentKindLabel(parentKind[form.kind])} in your
-                    library first.
-                  </small>
+                  <small>Create a subject in your content drive first.</small>
                 )}
               </Field>
             )}
@@ -2610,7 +2835,7 @@ function Assignments({ data, refresh }: any) {
                   setContentIds([]);
                 }}
               >
-                {["subject", "chapter", "video"].map((k) => (
+                {["subject", "folder", "video"].map((k) => (
                   <option key={k} value={k}>
                     {contentKindLabel(k).replace(/^./, (c) => c.toUpperCase())}
                   </option>
@@ -2697,8 +2922,8 @@ function Assignments({ data, refresh }: any) {
               securely theirs.
             </h2>
             <p>
-              Assigning a subject or module includes its published learning
-              materials and future additions.
+              Assigning a subject or folder includes every published item inside
+              it, including future additions.
             </p>
             <p>
               Individual revocations override group access. Group revocations

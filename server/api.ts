@@ -34,7 +34,7 @@ const safePicture = z
     "Choose a PNG, JPEG, or WebP image smaller than 150 KB.",
   );
 const contentSchema = z.object({
-  kind: z.enum(["subject", "chapter", "topic", "video"]),
+  kind: z.enum(["subject", "folder", "video"]),
   parent_id: z.string().nullable(),
   name: text,
   description: z.string().max(5000).default(""),
@@ -688,18 +688,26 @@ async function validateContent(b: any, recordId?: string) {
     const parent = await one("SELECT kind FROM content WHERE id=?", [
       b.parent_id,
     ]);
-    const expected: Record<string, string> = {
-      chapter: "subject",
-      topic: "chapter",
-      video: "chapter",
+    const allowedParents: Record<string, string[]> = {
+      folder: ["subject", "folder"],
+      video: ["subject", "folder", "chapter", "topic"],
     };
-    const validParent =
-      parent?.kind === expected[b.kind] ||
-      (b.kind === "video" && parent?.kind === "topic");
+    const validParent = allowedParents[b.kind]?.includes(parent?.kind);
     if (!validParent || b.parent_id === recordId)
-      bad(
-        `Select a valid ${{ subject: "subject", chapter: "module" }[expected[b.kind]]}.`,
-      );
+      bad(`Select a valid location for this ${b.kind}.`);
+    if (recordId) {
+      let ancestorId = b.parent_id;
+      const visited = new Set<string>();
+      while (ancestorId && !visited.has(ancestorId)) {
+        if (ancestorId === recordId)
+          bad("A folder cannot be moved inside itself or one of its folders.");
+        visited.add(ancestorId);
+        const ancestor = await one("SELECT parent_id FROM content WHERE id=?", [
+          ancestorId,
+        ]);
+        ancestorId = ancestor?.parent_id;
+      }
+    }
   }
   if (b.kind !== "subject") b.public = 0;
   for (const [field, mime] of [

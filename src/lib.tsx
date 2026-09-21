@@ -423,6 +423,7 @@ export function descendants(node: Item, items: Item[]): Item[] {
 export function contentKindLabel(kind: string, plural = false): string {
   const labels: Record<string, [string, string]> = {
     subject: ["subject", "subjects"],
+    folder: ["folder", "folders"],
     chapter: ["module", "modules"],
     topic: ["module section", "module sections"],
     video: ["learning material", "learning materials"],

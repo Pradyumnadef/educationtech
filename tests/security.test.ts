@@ -588,7 +588,7 @@ test("timed assignments enforce targeting, private document uploads, and submiss
     404,
   );
 });
-test("full hierarchy CRUD rejects invalid parents and hides drafts", async () => {
+test("nested content folders inherit access, reject cycles, and hide drafts", async () => {
   const s = await request(
     "/admin/content",
     "POST",
@@ -601,44 +601,65 @@ test("full hierarchy CRUD rejects invalid parents and hides drafts", async () =>
     teacher,
   );
   assert.equal(s.status, 200);
-  const wrong = await request(
+  const directSubjectVideo = await request(
     "/admin/content",
     "POST",
-    { kind: "video", parent_id: s.data.id, name: "Wrong parent" },
+    { kind: "video", parent_id: s.data.id, name: "Subject file" },
     teacher,
   );
-  assert.equal(wrong.status, 400);
+  assert.equal(directSubjectVideo.status, 200);
   let parent = s.data.id;
-  let moduleId = "";
+  let firstFolderId = "";
+  let lastFolderId = "";
   let videoId = "";
-  for (const kind of ["chapter", "topic", "video"]) {
+  for (const [index, kind] of [
+    "folder",
+    "folder",
+    "folder",
+    "video",
+  ].entries()) {
     const r = await request(
       "/admin/content",
       "POST",
-      { kind, parent_id: parent, name: `Test ${kind}`, status: "published" },
+      {
+        kind,
+        parent_id: parent,
+        name: `Test ${kind} ${index}`,
+        status: "published",
+      },
       teacher,
     );
     assert.equal(r.status, 200, JSON.stringify(r.data));
     parent = r.data.id;
-    if (kind === "chapter") moduleId = r.data.id;
+    if (kind === "folder") {
+      if (!firstFolderId) firstFolderId = r.data.id;
+      lastFolderId = r.data.id;
+    }
     if (kind === "video") videoId = r.data.id;
   }
-  const directModuleVideo = await request(
+  const wrong = await request(
     "/admin/content",
     "POST",
     {
-      kind: "video",
-      parent_id: moduleId,
-      name: "Direct module lesson",
+      kind: "folder",
+      parent_id: videoId,
+      name: "Folder inside a file",
+    },
+    teacher,
+  );
+  assert.equal(wrong.status, 400);
+  const cycle = await request(
+    `/admin/content/${firstFolderId}`,
+    "PUT",
+    {
+      kind: "folder",
+      parent_id: lastFolderId,
+      name: "Cyclic folder",
       status: "published",
     },
     teacher,
   );
-  assert.equal(
-    directModuleVideo.status,
-    200,
-    JSON.stringify(directModuleVideo.data),
-  );
+  assert.equal(cycle.status, 400);
   await request(
     "/admin/assignments",
     "POST",
