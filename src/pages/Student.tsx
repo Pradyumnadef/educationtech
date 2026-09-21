@@ -158,6 +158,18 @@ function Overview({ data }: { data: any }) {
   const nextSubject =
     next &&
     subjects.find((s) => descendants(s, items).some((i) => i.id === next.id));
+  let nextModule: Item | undefined;
+  if (next) {
+    let current: Item | undefined = next;
+    let steps = 0;
+    while (current && steps++ < 10) {
+      if (current.kind === "chapter") {
+        nextModule = current;
+        break;
+      }
+      current = items.find((item) => item.id === current?.parent_id);
+    }
+  }
   const totalWatch = data.events.reduce(
       (a: number, e: any) => a + Number(e.seconds),
       0,
@@ -208,7 +220,13 @@ function Overview({ data }: { data: any }) {
           <p>Pick up where you left off. Your next discovery is waiting.</p>
           <Link
             className="button cream"
-            to={next ? `/app/watch/${next.id}` : "/app/subjects"}
+            to={
+              nextModule
+                ? `/app/videos?module=${encodeURIComponent(nextModule.id)}`
+                : next
+                  ? "/app/videos"
+                  : "/app/subjects"
+            }
           >
             {next ? "Let’s keep learning" : "Explore your subjects"}
             <ArrowUpRight size={17} />
