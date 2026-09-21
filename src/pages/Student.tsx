@@ -648,37 +648,62 @@ function StudentAttendance({ data, refresh }: { data: any; refresh: () => any })
   const permissionRequested = useRef(false);
   const toast = useToast();
   const sessions = data.attendance || [];
-  const requestLocation = (showError = false) =>
-    new Promise<GeolocationPosition>((resolve, reject) => {
-      if (!navigator.geolocation) {
-        setLocationState("unavailable");
-        if (showError)
-          toast("This device does not support location attendance.", "error");
-        reject(new Error("Geolocation is unavailable"));
-        return;
+  const readLocationPermission = async () => {
+    if (!navigator.permissions?.query) return undefined;
+    try {
+      return (await navigator.permissions.query({ name: "geolocation" })).state;
+    } catch {
+      return undefined;
+    }
+  };
+  const getPosition = (options: PositionOptions) =>
+    new Promise<GeolocationPosition>((resolve, reject) =>
+      navigator.geolocation.getCurrentPosition(resolve, reject, options),
+    );
+  const requestLocation = async (showError = false) => {
+    if (!navigator.geolocation) {
+      setLocationState("unavailable");
+      const error = new Error("Geolocation is unavailable");
+      if (showError)
+        toast("This device does not support location attendance.", "error");
+      throw error;
+    }
+    setLocationState("requesting");
+    try {
+      let position: GeolocationPosition;
+      try {
+        position = await getPosition({
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0,
+        });
+      } catch (firstError) {
+        const permission = await readLocationPermission();
+        if (permission === "denied") throw firstError;
+        position = await getPosition({
+          enableHighAccuracy: false,
+          timeout: 10000,
+          maximumAge: 60000,
+        });
       }
-      setLocationState("requesting");
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setLocationState("ready");
-          resolve(position);
-        },
-        (error) => {
-          setLocationState(
-            error.code === error.PERMISSION_DENIED ? "blocked" : "idle",
-          );
-          if (showError) {
-            const message =
-              error.code === error.PERMISSION_DENIED
-                ? "Location is blocked for this site. Open Chrome site settings, allow Location, then try again."
-                : "Your location could not be confirmed. Move near an open area and try again.";
-            toast(message, "error");
-          }
-          reject(error);
-        },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
-      );
-    });
+      setLocationState("ready");
+      return position;
+    } catch (caughtError) {
+      const error = caughtError as GeolocationPositionError;
+      const permission = await readLocationPermission();
+      const blocked =
+        permission === "denied" ||
+        (permission === undefined && error.code === error.PERMISSION_DENIED);
+      setLocationState(blocked ? "blocked" : "unavailable");
+      if (showError) {
+        const message = blocked
+          ? "Location is blocked for this site. Open Chrome site settings, allow Location, then try again."
+          : "Chrome is allowed, but your device could not provide its location. Turn on device Location or GPS, then try again.";
+        toast(message, "error");
+      }
+      throw error;
+    }
+  };
   const hasOpenSession = sessions.some((session: any) => {
     const now = Date.now();
     return (
@@ -753,6 +778,18 @@ function StudentAttendance({ data, refresh }: { data: any; refresh: () => any })
           </div>
           <Button type="button" variant="secondary small" onClick={() => requestLocation(true).catch(() => undefined)}>
             Try again
+          </Button>
+        </div>
+      )}
+      {hasOpenSession && locationState === "unavailable" && (
+        <div className="attendance-location-notice blocked">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>Chrome is allowed, but the device location is unavailable</strong>
+            <p>Turn on Location or GPS on your device. On Windows, also enable Location services and desktop-app access, then try again.</p>
+          </div>
+          <Button type="button" variant="secondary small" onClick={() => requestLocation(true).catch(() => undefined)}>
+            Check location again
           </Button>
         </div>
       )}
