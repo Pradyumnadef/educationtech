@@ -44,6 +44,7 @@ export type Item = {
     mime: string;
     size: number;
     asset_type: "video" | "file";
+    url?: string;
   }>;
 };
 export type User = {

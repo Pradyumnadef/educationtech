@@ -192,6 +192,46 @@ api.get("/learning", async (req, res) => {
             locked: !ancestors.has(n.id),
           },
     );
+  const assetRows = await query(
+    `SELECT a.content_id,u.id,u.filename,u.mime,u.size,a.asset_type,a.sort_order,'asset' AS route_type
+     FROM content_assets a JOIN uploads u ON u.id=a.upload_id AND u.state='ready'
+     UNION ALL
+     SELECT c.id AS content_id,u.id,u.filename,u.mime,u.size,'video' AS asset_type,-1 AS sort_order,'video' AS route_type
+     FROM content c JOIN uploads u ON u.storage_key=c.storage_key AND u.state='ready'
+     WHERE c.storage_key<>''
+     UNION ALL
+     SELECT c.id AS content_id,u.id,u.filename,u.mime,u.size,'file' AS asset_type,-1 AS sort_order,'resource' AS route_type
+     FROM content c JOIN uploads u ON u.storage_key=c.resource_key AND u.state='ready'
+     WHERE c.resource_key<>''
+     ORDER BY content_id,asset_type DESC,sort_order`,
+  );
+  const assetsByContent = new Map<string, any[]>();
+  for (const asset of assetRows) {
+    if (!allowed.has(asset.content_id)) continue;
+    const assets = assetsByContent.get(asset.content_id) || [];
+    if (!assets.some((existing: any) => existing.id === asset.id)) {
+      const { route_type, ...safeAsset } = asset;
+      assets.push({
+        ...safeAsset,
+        url:
+          route_type === "asset"
+            ? `/api/storage/media/${asset.content_id}/asset/${asset.id}`
+            : `/api/storage/media/${asset.content_id}/${route_type}`,
+      });
+    }
+    assetsByContent.set(asset.content_id, assets);
+  }
+  for (const item of content) {
+    if (item.kind !== "video" || !item.accessible) continue;
+    const assets = assetsByContent.get(item.id) || [];
+    item.assets = assets;
+    item.video_count = assets.filter(
+      (asset: any) => asset.asset_type === "video",
+    ).length;
+    item.file_count = assets.filter(
+      (asset: any) => asset.asset_type === "file",
+    ).length;
+  }
   const progress = (
     await query("SELECT * FROM progress WHERE user_id=?", [user.id])
   ).filter((p: any) => allowed.has(p.video_id));

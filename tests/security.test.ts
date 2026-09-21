@@ -829,6 +829,21 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
     overviewMaterial.assets.map((item: any) => item.filename).sort(),
     ["format-fixture.mp4", "lesson-notes.pdf"],
   );
+  const studentMaterial = (
+    await request("/learning", "GET", undefined, student)
+  ).data.content.find((item: any) => item.id === "python-4");
+  assert.equal(studentMaterial.video_count, 1);
+  assert.equal(studentMaterial.file_count, 1);
+  assert.deepEqual(
+    studentMaterial.assets.map((item: any) => item.filename).sort(),
+    ["format-fixture.mp4", "lesson-notes.pdf"],
+  );
+  assert.ok(
+    studentMaterial.assets.every((item: any) =>
+      item.url.startsWith("/api/storage/media/python-4/"),
+    ),
+  );
+  assert.equal("storage_key" in studentMaterial.assets[0], false);
   const preview = await fetch(origin + `/api/storage/preview/${prep.data.id}`, {
     headers: { Cookie: teacher.cookie, Range: "bytes=0-7" },
   });

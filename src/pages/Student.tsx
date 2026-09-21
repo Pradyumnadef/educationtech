@@ -119,8 +119,9 @@ export default function Student({
   else if (route[0] === "progress") body = <Progress data={data} />;
   else if (route[0] === "assignments")
     body = <StudentAssignments data={data} refresh={refresh} />;
-  else if (["subjects", "videos"].includes(route[0]))
-    body = <Library type={route[0]} data={data} />;
+  else if (route[0] === "videos") body = <LearningMaterials data={data} />;
+  else if (route[0] === "subjects")
+    body = <Library type="subjects" data={data} />;
   else if (!route[0]) body = <Overview data={data} />;
   else
     body = (
@@ -526,6 +527,138 @@ function Library({ type, data }: { type: string; data: any }) {
               items={items}
               progress={data.progress}
             />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+function fileSize(bytes: number) {
+  if (!bytes) return "0 KB";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+function LearningMaterials({ data }: { data: any }) {
+  const [tab, setTab] = useState<"videos" | "documents">("videos");
+  const [search, setSearch] = useState("");
+  const debounced = useDebounced(search);
+  const items: Item[] = data.content;
+  const lessons = items.filter(
+    (item) => item.kind === "video" && item.accessible,
+  );
+  const matches = (value: string) =>
+    value.toLowerCase().includes(debounced.toLowerCase());
+  const videos = lessons.filter(
+    (item) =>
+      Number(item.video_count) > 0 &&
+      matches(
+        `${item.name} ${item.description} ${(item.assets || []).map((asset) => asset.filename).join(" ")}`,
+      ),
+  );
+  const documents = lessons.flatMap((lesson) =>
+    (lesson.assets || [])
+      .filter(
+        (asset) =>
+          asset.asset_type === "file" &&
+          matches(`${asset.filename} ${lesson.name} ${lesson.description}`),
+      )
+      .map((asset) => ({ asset, lesson })),
+  );
+  const visibleCount = tab === "videos" ? videos.length : documents.length;
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">YOUR LEARNING LIBRARY</span>
+          <h1>Learning materials</h1>
+          <p>
+            Watch your lessons or open the documents shared by your teacher.
+          </p>
+        </div>
+      </div>
+      <div
+        className="material-library-tabs student-material-tabs"
+        role="tablist"
+        aria-label="Learning material type"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "videos"}
+          className={tab === "videos" ? "active" : ""}
+          onClick={() => setTab("videos")}
+        >
+          <Play size={17} /> Videos <span>{videos.length}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "documents"}
+          className={tab === "documents" ? "active" : ""}
+          onClick={() => setTab("documents")}
+        >
+          <FileText size={17} /> Documents <span>{documents.length}</span>
+        </button>
+      </div>
+      <div className="student-material-toolbar">
+        <label className="search-box">
+          <Search size={17} />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={`Search ${tab}…`}
+            aria-label={`Search ${tab}`}
+          />
+        </label>
+        <span>
+          {visibleCount} {visibleCount === 1 ? "item" : "items"}
+        </span>
+      </div>
+      {!visibleCount ? (
+        <Empty
+          title={search ? `No ${tab} found` : `No ${tab} assigned yet`}
+          description={
+            search
+              ? "Try a different search."
+              : "Your teacher will share learning materials here."
+          }
+        />
+      ) : tab === "videos" ? (
+        <div className="video-list">
+          {videos.map((video, index) => (
+            <VideoRow
+              key={video.id}
+              video={video}
+              index={index}
+              progress={data.progress.find(
+                (entry: any) => entry.video_id === video.id,
+              )}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="student-document-list">
+          {documents.map(({ asset, lesson }) => (
+            <a
+              className="student-document-row"
+              href={asset.url}
+              target="_blank"
+              rel="noreferrer"
+              key={`${lesson.id}-${asset.id}`}
+            >
+              <span className="student-document-icon">
+                <FileText size={20} />
+              </span>
+              <span className="student-document-copy">
+                <strong>{asset.filename}</strong>
+                <small>
+                  {lesson.name} · {fileSize(asset.size)}
+                </small>
+              </span>
+              <span className="student-document-action">
+                Open <ArrowUpRight size={16} />
+              </span>
+            </a>
           ))}
         </div>
       )}
