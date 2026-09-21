@@ -859,6 +859,11 @@ function SubjectDetail({ id, data }: { id: string; data: any }) {
     videos = children.filter((c) => c.kind === "video" && c.accessible),
     modules = items.filter(
       (item) => item.kind === "chapter" && item.parent_id === node.id,
+    ),
+    firstModule = modules.find((module) =>
+      descendants(module, items).some(
+        (item) => item.kind === "video" && item.accessible,
+      ),
     );
   return (
     <>
@@ -885,8 +890,11 @@ function SubjectDetail({ id, data }: { id: string; data: any }) {
               {mins(videos.reduce((a, v) => a + v.duration, 0))}
             </span>
           </div>
-          {videos[0] && (
-            <Link className="button" to={`/app/watch/${videos[0].id}`}>
+          {firstModule && (
+            <Link
+              className="button"
+              to={`/app/videos?module=${encodeURIComponent(firstModule.id)}`}
+            >
               Start learning <ArrowRight size={17} />
             </Link>
           )}
@@ -913,7 +921,10 @@ function SubjectDetail({ id, data }: { id: string; data: any }) {
               );
               return (
                 <section className="module-card" key={module.id}>
-                  <header className="module-heading">
+                  <Link
+                    className="module-heading module-heading-link"
+                    to={`/app/videos?module=${encodeURIComponent(module.id)}`}
+                  >
                     <span className="module-number">
                       MODULE {String(moduleIndex + 1).padStart(2, "0")}
                     </span>
@@ -924,8 +935,9 @@ function SubjectDetail({ id, data }: { id: string; data: any }) {
                     <span className="module-count">
                       {moduleVideos.length}{" "}
                       {moduleVideos.length === 1 ? "lesson" : "lessons"}
+                      <ArrowRight size={15} />
                     </span>
-                  </header>
+                  </Link>
                   <div className="module-materials video-list">
                     {moduleVideos.map((video, videoIndex) => (
                       <VideoRow
@@ -972,7 +984,6 @@ function Watch({
     { data: lesson, error, loading } = useData(`/videos/${videoId}`),
     ref = useRef<HTMLVideoElement>(null),
     toast = useToast(),
-    [tab, setTab] = useState("notes"),
     [denied, setDenied] = useState(""),
     [speed, setSpeed] = useState("1"),
     [selectedVideo, setSelectedVideo] = useState("");
@@ -1047,8 +1058,15 @@ function Watch({
   if (error || denied) return <Failure error={error || denied} />;
   return (
     <>
-      <Link className="back-link" to="/app/videos">
-        <ArrowLeft size={15} /> Your lessons
+      <Link
+        className="back-link"
+        to={
+          activeModuleId
+            ? `/app/videos?module=${activeModuleId}`
+            : "/app/videos"
+        }
+      >
+        <ArrowLeft size={15} /> Module materials
       </Link>
       <div className="watch-layout">
         <div>
@@ -1198,41 +1216,6 @@ function Watch({
               >
                 <ArrowLeft size={15} /> Previous
               </Link>
-            )}
-          </div>
-          <div className="tabs">
-            <button
-              className={tab === "notes" ? "active" : ""}
-              onClick={() => setTab("notes")}
-            >
-              Lesson notes
-            </button>
-            <button
-              className={tab === "resources" ? "active" : ""}
-              onClick={() => setTab("resources")}
-            >
-              Resources
-            </button>
-          </div>
-          <div className="lesson-notes">
-            {tab === "notes" ? (
-              <p>
-                {lesson.notes || "No notes have been added to this lesson yet."}
-              </p>
-            ) : lesson.files?.length ? (
-              <div className="lesson-resource-list">
-                {lesson.files.map((file: any) => (
-                  <a className="button secondary" href={file.url} key={file.id}>
-                    <Download size={16} /> {file.filename}
-                  </a>
-                ))}
-              </div>
-            ) : lesson.resource ? (
-              <a className="button secondary" href={lesson.resource}>
-                <Download size={16} /> Download lesson resource
-              </a>
-            ) : (
-              <p>No files have been added to this lesson yet.</p>
             )}
           </div>
         </div>
