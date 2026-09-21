@@ -11,7 +11,6 @@ import {
   Clock,
   Flame,
   Leaf,
-  Sparkles,
   ChevronRight,
   Lock,
   Bell,
@@ -146,6 +145,113 @@ export default function Student({
     </Shell>
   );
 }
+
+const dashboardSlides = [
+  {
+    key: "english",
+    image: "/assets/subjects/etw-slide.webp",
+    alt: "Let's learn English Technical Writing with S R Krishna",
+    matches: (name: string) => /english|\betw\b/i.test(name),
+  },
+  {
+    key: "uhv",
+    image: "/assets/subjects/uhv-slide.webp",
+    alt: "Let's learn Universal Human Values with S R Krishna",
+    matches: (name: string) => /\buhv\b|universal human values/i.test(name),
+  },
+];
+
+function SubjectCarousel({ subjects }: { subjects: Item[] }) {
+  const [active, setActive] = useState(0);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    if (paused || reduceMotion) return;
+    const timer = window.setInterval(
+      () => setActive((current) => (current + 1) % dashboardSlides.length),
+      5500,
+    );
+    return () => window.clearInterval(timer);
+  }, [paused]);
+
+  const move = (direction: number) => {
+    setActive(
+      (current) =>
+        (current + direction + dashboardSlides.length) %
+        dashboardSlides.length,
+    );
+  };
+
+  return (
+    <section
+      className="subject-carousel"
+      aria-label="Featured subjects"
+      aria-roledescription="carousel"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocusCapture={() => setPaused(true)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setPaused(false);
+        }
+      }}
+    >
+      <div className="subject-carousel-slides" aria-live="polite">
+        {dashboardSlides.map((slide, index) => {
+          const subject = subjects.find((item) => slide.matches(item.name));
+          return (
+            <Link
+              key={slide.key}
+              className={`subject-carousel-slide${index === active ? " active" : ""}`}
+              to={subject ? `/app/subjects/${subject.id}` : "/app/subjects"}
+              aria-hidden={index !== active}
+              tabIndex={index === active ? 0 : -1}
+              aria-label={`Open ${subject?.name || slide.key.toUpperCase()} subject`}
+            >
+              <img
+                src={slide.image}
+                alt={slide.alt}
+                loading={index === 0 ? "eager" : "lazy"}
+              />
+            </Link>
+          );
+        })}
+      </div>
+      <button
+        className="subject-carousel-arrow previous"
+        type="button"
+        aria-label="Previous subject"
+        onClick={() => move(-1)}
+      >
+        <ArrowLeft size={19} />
+      </button>
+      <button
+        className="subject-carousel-arrow next"
+        type="button"
+        aria-label="Next subject"
+        onClick={() => move(1)}
+      >
+        <ArrowRight size={19} />
+      </button>
+      <div className="subject-carousel-dots" aria-label="Choose a subject slide">
+        {dashboardSlides.map((slide, index) => (
+          <button
+            key={slide.key}
+            type="button"
+            className={index === active ? "active" : ""}
+            aria-label={`Show slide ${index + 1}`}
+            aria-current={index === active ? "true" : undefined}
+            onClick={() => setActive(index)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function Overview({ data }: { data: any }) {
   const { user } = useAuth();
   const items: Item[] = data.content,
@@ -164,18 +270,6 @@ function Overview({ data }: { data: any }) {
   const nextSubject =
     next &&
     subjects.find((s) => descendants(s, items).some((i) => i.id === next.id));
-  let nextFolder: Item | undefined;
-  if (next) {
-    let current: Item | undefined = next;
-    let steps = 0;
-    while (current && steps++ < 10) {
-      if (["folder", "chapter", "topic", "subject"].includes(current.kind)) {
-        nextFolder = current;
-        break;
-      }
-      current = items.find((item) => item.id === current?.parent_id);
-    }
-  }
   const totalWatch = data.events.reduce(
       (a: number, e: any) => a + Number(e.seconds),
       0,
@@ -213,66 +307,7 @@ function Overview({ data }: { data: any }) {
           })}
         </div>
       </div>
-      <section className="welcome-banner">
-        <div>
-          <span className="banner-tag">
-            <Sparkles size={13} /> YOUR NEXT LIGHTBULB MOMENT
-          </span>
-          <h2>
-            Big things start
-            <br />
-            with a little <em>curiosity.</em>
-          </h2>
-          <p>Pick up where you left off. Your next discovery is waiting.</p>
-          <Link
-            className="button cream"
-            to={
-              nextFolder
-                ? `/app/videos?folder=${encodeURIComponent(nextFolder.id)}`
-                : next
-                  ? "/app/videos"
-                  : "/app/subjects"
-            }
-          >
-            {next ? "Let’s keep learning" : "Explore your subjects"}
-            <ArrowUpRight size={17} />
-          </Link>
-        </div>
-        <div className="banner-art">
-          <svg viewBox="0 0 380 240" aria-hidden="true">
-            <circle cx="209" cy="119" r="100" fill="#345845" />
-            <ellipse
-              cx="216"
-              cy="137"
-              rx="128"
-              ry="45"
-              fill="none"
-              stroke="#889c6f"
-              transform="rotate(-26 216 137)"
-            />
-            <path
-              d="M133 189l-20-123q42-8 79 18 34-36 82-28l23 125q-46-9-86 26-37-24-78-18z"
-              fill="#dbe3b5"
-            />
-            <path
-              d="M192 84l19 123M136 90l42 13m-39 2 42 13m-39 2 42 13m-39 2 42 13m28-53 43-18m-40 33 43-18m-40 33 43-18m-40 33 43-18"
-              fill="none"
-              stroke="#889c70"
-              strokeWidth="2"
-            />
-            <path
-              d="M293 43v24m-12-12h24m-201 114v18m-9-9h18"
-              stroke="#d9cf92"
-              strokeWidth="3"
-            />
-            <circle cx="305" cy="159" r="9" fill="#aab989" />
-            <circle cx="104" cy="38" r="5" fill="#aab989" />
-          </svg>
-          <div className="banner-art-label">
-            <Check size={12} /> ONE LESSON CLOSER TO YOUR GOALS
-          </div>
-        </div>
-      </section>
+      <SubjectCarousel subjects={subjects} />
       <div className="stats-grid">
         <Stat
           icon={BookOpen}
