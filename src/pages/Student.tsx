@@ -112,6 +112,10 @@ export default function Student({
   else if (error) body = <Failure error={error} retry={refresh} />;
   else if (route[0] === "watch" && route[1])
     body = <Watch videoId={route[1]} data={data} refresh={refresh} />;
+  else if (route[0] === "view" && route[1] && route[2])
+    body = (
+      <DocumentViewer contentId={route[1]} assetId={route[2]} data={data} />
+    );
   else if (route[0] === "subjects" && route[1])
     body = <SubjectDetail id={route[1]} data={data} />;
   else if (route[0] === "profile") body = <Profile />;
@@ -570,7 +574,6 @@ function StudentDrive({
   subjectId?: string;
 }) {
   const location = useLocation();
-  const [tab, setTab] = useState<"videos" | "documents">("videos");
   const [search, setSearch] = useState("");
   const items: Item[] = data.content;
   const requestedId = new URLSearchParams(location.search).get("folder");
@@ -582,35 +585,27 @@ function StudentDrive({
   );
   const isContainer = (item: Item) =>
     ["subject", "folder", "chapter", "topic"].includes(item.kind);
-  const rootFolders = subjectId
-    ? []
+  const directChildren = current
+    ? items.filter((item) => item.parent_id === current.id)
     : items.filter(
         (item) =>
           item.kind === "subject" && (item.accessible || item.container),
       );
-  const directChildren = current
-    ? items.filter((item) => item.parent_id === current.id)
-    : rootFolders;
-  const matches = (item: Item) =>
-    `${item.name} ${item.description}`
-      .toLowerCase()
-      .includes(search.toLowerCase());
+  const searchText = search.trim().toLowerCase();
+  const matches = (value: string) => value.toLowerCase().includes(searchText);
   const folders = directChildren.filter(
     (item) =>
-      isContainer(item) && (item.accessible || item.container) && matches(item),
+      isContainer(item) &&
+      (item.accessible || item.container) &&
+      matches(`${item.name} ${item.description}`),
   );
   const materials = directChildren.filter(
-    (item) => item.kind === "video" && item.accessible && matches(item),
+    (item) => item.kind === "video" && item.accessible,
   );
-  const videos = materials.filter((item) => Number(item.video_count || 0) > 0);
-  const documents = materials.flatMap((material) =>
+  const files = materials.flatMap((material) =>
     (material.assets || [])
-      .filter(
-        (asset) =>
-          asset.asset_type === "file" &&
-          `${asset.filename} ${material.name}`
-            .toLowerCase()
-            .includes(search.toLowerCase()),
+      .filter((asset) =>
+        matches(`${asset.filename} ${material.name} ${material.description}`),
       )
       .map((asset) => ({ asset, material })),
   );
@@ -628,7 +623,7 @@ function StudentDrive({
     subjectId && folder.id === subjectId
       ? basePath
       : `${basePath}?folder=${encodeURIComponent(folder.id)}`;
-  const visibleCount = tab === "videos" ? videos.length : documents.length;
+  const hasItems = folders.length + files.length > 0;
   return (
     <>
       <div className="page-heading drive-student-heading">
@@ -637,7 +632,7 @@ function StudentDrive({
           <h1>{current?.name || "Learning materials"}</h1>
           <p>
             {current
-              ? "Open a folder or choose Videos and Documents below."
+              ? "Open any folder, video, or document shared by your teacher."
               : "Choose a subject to browse the content your teacher shared with you."}
           </p>
         </div>
@@ -663,125 +658,137 @@ function StudentDrive({
             aria-label="Search this folder"
           />
         </label>
+        <span>{folders.length + files.length} items</span>
       </div>
-      {!!folders.length && (
-        <section className="drive-section">
-          <div className="section-heading compact">
-            <h2>{current ? "Folders" : "Subjects"}</h2>
-          </div>
-          <div className="drive-folder-grid student-drive-folders">
-            {folders.map((folder) => {
-              const nested = descendants(folder, items);
-              const folderVideos = nested.filter(
-                (item) => item.kind === "video" && item.accessible,
-              );
-              const videoCount = folderVideos.reduce(
-                (total, item) => total + Number(item.video_count || 0),
-                0,
-              );
-              const documentCount = folderVideos.reduce(
-                (total, item) => total + Number(item.file_count || 0),
-                0,
-              );
-              return (
-                <Link
-                  className="drive-folder-card"
-                  to={linkFor(folder)}
-                  key={folder.id}
-                >
-                  <span className="drive-folder-icon">
-                    <Folder size={23} />
-                  </span>
-                  <span>
-                    <strong>{folder.name}</strong>
-                    <small>
-                      {videoCount} videos · {documentCount} documents
-                    </small>
-                  </span>
-                  <ChevronRight size={18} />
-                </Link>
-              );
-            })}
-          </div>
-        </section>
-      )}
-      {current && (
-        <>
-          <div
-            className="material-library-tabs student-material-tabs"
-            role="tablist"
-            aria-label="Learning material type"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === "videos"}
-              className={tab === "videos" ? "active" : ""}
-              onClick={() => setTab("videos")}
+      {hasItems ? (
+        <div className="drive-explorer-list" role="list">
+          {folders.map((folder) => (
+            <Link
+              className="drive-explorer-row"
+              to={linkFor(folder)}
+              key={folder.id}
+              role="listitem"
             >
-              <Play size={17} /> Videos <span>{videos.length}</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === "documents"}
-              className={tab === "documents" ? "active" : ""}
-              onClick={() => setTab("documents")}
-            >
-              <FileText size={17} /> Documents <span>{documents.length}</span>
-            </button>
-          </div>
-          {!visibleCount ? (
-            <Empty
-              title={`No ${tab} in this folder`}
-              description="Open another folder or ask your teacher to add content here."
-            />
-          ) : tab === "videos" ? (
-            <div className="video-list">
-              {videos.map((video, index) => (
-                <VideoRow
-                  key={video.id}
-                  video={video}
-                  index={index}
-                  progress={data.progress.find(
-                    (entry: any) => entry.video_id === video.id,
-                  )}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="student-document-list">
-              {documents.map(({ asset, material }) => (
-                <a
-                  className="student-document-row"
-                  href={asset.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  key={`${material.id}-${asset.id}`}
-                >
-                  <span className="student-document-icon">
-                    <FileText size={20} />
-                  </span>
-                  <span className="student-document-copy">
-                    <strong>{asset.filename}</strong>
-                    <small>
-                      {material.name} · {fileSize(asset.size)}
-                    </small>
-                  </span>
-                  <span className="student-document-action">
-                    Open <ArrowUpRight size={16} />
-                  </span>
-                </a>
-              ))}
-            </div>
-          )}
-        </>
-      )}
-      {!current && !folders.length && (
+              <span className="drive-folder-icon">
+                <Folder size={22} />
+              </span>
+              <span className="drive-explorer-name">
+                <strong>{folder.name}</strong>
+                <small>Folder</small>
+              </span>
+              <span className="drive-explorer-type">Folder</span>
+              <ChevronRight size={18} />
+            </Link>
+          ))}
+          {files.map(({ asset, material }) => {
+            const isVideo = asset.asset_type === "video";
+            const target = isVideo
+              ? `/app/watch/${material.id}?asset=${encodeURIComponent(asset.id)}`
+              : `/app/view/${material.id}/${asset.id}`;
+            return (
+              <Link
+                className="drive-explorer-row"
+                to={target}
+                key={`${material.id}-${asset.id}`}
+                role="listitem"
+              >
+                <span className="drive-file-icon">
+                  {isVideo ? <Play size={20} /> : <FileText size={20} />}
+                </span>
+                <span className="drive-explorer-name">
+                  <strong>{asset.filename}</strong>
+                  <small>
+                    {material.name} · {fileSize(asset.size)}
+                  </small>
+                </span>
+                <span className="drive-explorer-type">
+                  {isVideo
+                    ? "Video"
+                    : asset.mime === "application/pdf"
+                      ? "PDF"
+                      : "Document"}
+                </span>
+                <ChevronRight size={18} />
+              </Link>
+            );
+          })}
+        </div>
+      ) : (
         <Empty
-          title="No learning materials assigned yet"
-          description="Your teacher will share subjects, folders, videos, and documents here."
+          title={
+            search
+              ? "Nothing found"
+              : current
+                ? "This folder is empty"
+                : "No learning materials assigned yet"
+          }
+          description={
+            search
+              ? "Try a different search."
+              : "Your teacher will share folders and files here."
+          }
         />
+      )}
+    </>
+  );
+}
+function DocumentViewer({
+  contentId,
+  assetId,
+  data,
+}: {
+  contentId: string;
+  assetId: string;
+  data: any;
+}) {
+  const items: Item[] = data.content;
+  const material = items.find(
+    (item) => item.id === contentId && item.kind === "video" && item.accessible,
+  );
+  const asset = material?.assets?.find(
+    (candidate: any) =>
+      candidate.id === assetId && candidate.asset_type === "file",
+  );
+  if (!material || !asset)
+    return (
+      <Empty
+        title="This document isn’t available"
+        description="Return to your learning materials or ask your teacher for access."
+      />
+    );
+  const backTo = material.parent_id
+    ? `/app/videos?folder=${encodeURIComponent(material.parent_id)}`
+    : "/app/videos";
+  const assetUrl = String(asset.url || "");
+  const downloadUrl = `${assetUrl}${assetUrl.includes("?") ? "&" : "?"}download=1`;
+  const isPdf = asset.mime === "application/pdf";
+  return (
+    <>
+      <div className="document-viewer-header">
+        <div>
+          <Link className="back-link" to={backTo}>
+            <ArrowLeft size={15} /> Back to folder
+          </Link>
+          <h1>{asset.filename}</h1>
+          <p>
+            {material.name} · {fileSize(asset.size)}
+          </p>
+        </div>
+        <a className="button" href={downloadUrl}>
+          <Download size={17} /> Download
+        </a>
+      </div>
+      {isPdf ? (
+        <div className="pdf-viewer-shell">
+          <iframe src={assetUrl} title={`PDF viewer: ${asset.filename}`} />
+        </div>
+      ) : (
+        <Empty
+          title="Preview is available for PDF files"
+          description="Use Download to open this document in the appropriate application."
+        >
+          <FileText size={28} />
+        </Empty>
       )}
     </>
   );
@@ -850,6 +857,7 @@ function Watch({
   data: any;
   refresh: () => void;
 }) {
+  const location = useLocation();
   const { user } = useAuth(),
     { data: lesson, error, loading } = useData(`/videos/${videoId}`),
     ref = useRef<HTMLVideoElement>(null),
@@ -904,8 +912,14 @@ function Watch({
   };
   useEffect(() => {
     if (!lesson) return;
-    setSelectedVideo(lesson.videos?.[0]?.url || lesson.media || "");
-  }, [lesson, videoId]);
+    const requestedAsset = new URLSearchParams(location.search).get("asset");
+    setSelectedVideo(
+      lesson.videos?.find((video: any) => video.id === requestedAsset)?.url ||
+        lesson.videos?.[0]?.url ||
+        lesson.media ||
+        "",
+    );
+  }, [lesson, videoId, location.search]);
   useEffect(() => {
     setDenied("");
     lastTime.current = 0;

@@ -891,6 +891,11 @@ function ContentDrive({ data, refresh }: any) {
     ["subject", "folder"].includes(item.kind),
   );
   const materials = children.filter((item) => item.kind === "video");
+  const uploadedItems = materials.flatMap((material) =>
+    (material.assets || []).length
+      ? (material.assets || []).map((asset: any) => ({ asset, material }))
+      : [{ asset: null, material }],
+  );
   const crumbs: Item[] = [];
   if (current) {
     let node: Item | undefined = current;
@@ -967,90 +972,113 @@ function ContentDrive({ data, refresh }: any) {
             aria-label="Search this folder"
           />
         </label>
-        <span>{children.length} items</span>
+        <span>{folders.length + uploadedItems.length} items</span>
       </div>
-      {!!folders.length && (
-        <section className="drive-section">
-          <div className="section-heading compact">
-            <h2>{current ? "Folders" : "Subjects"}</h2>
-          </div>
-          <div className="drive-folder-grid">
-            {folders.map((folder) => (
-              <article className="drive-folder-card" key={folder.id}>
-                <Link
-                  to={`/admin/library?folder=${encodeURIComponent(folder.id)}`}
+      {!!(folders.length || uploadedItems.length) && (
+        <div className="drive-explorer-list admin-drive-list" role="list">
+          {folders.map((folder) => (
+            <article
+              className="drive-explorer-row"
+              key={folder.id}
+              role="listitem"
+            >
+              <Link
+                className="drive-explorer-main"
+                to={`/admin/library?folder=${encodeURIComponent(folder.id)}`}
+              >
+                <span className="drive-folder-icon">
+                  <Folder size={22} />
+                </span>
+                <span className="drive-explorer-name">
+                  <strong>{folder.name}</strong>
+                  <small>
+                    {
+                      items.filter((item) => item.parent_id === folder.id)
+                        .length
+                    }{" "}
+                    items
+                  </small>
+                </span>
+              </Link>
+              <span className="drive-explorer-type">
+                {folder.kind === "subject" ? "Subject" : "Folder"}
+              </span>
+              <div className="drive-row-actions">
+                <button
+                  className="icon-button"
+                  aria-label={`Edit ${folder.name}`}
+                  onClick={() => openEditor(folder)}
                 >
-                  <span className="drive-folder-icon">
-                    <Folder size={23} />
-                  </span>
-                  <span>
-                    <strong>{folder.name}</strong>
-                    <small>
-                      {
-                        items.filter((item) => item.parent_id === folder.id)
-                          .length
-                      }{" "}
-                      items
-                    </small>
-                  </span>
-                </Link>
+                  <Pencil size={15} />
+                </button>
+                <button
+                  className="icon-button danger-text"
+                  aria-label={`Delete ${folder.name}`}
+                  onClick={() => setConfirm(folder)}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </article>
+          ))}
+          {uploadedItems.map(({ asset, material }, index) => {
+            const isVideo = asset?.asset_type === "video";
+            return (
+              <article
+                className="drive-explorer-row"
+                key={`${material.id}-${asset?.id || index}`}
+                role="listitem"
+              >
+                <span className="drive-file-icon">
+                  {isVideo ? <FileVideo size={20} /> : <FileText size={20} />}
+                </span>
+                <span className="drive-explorer-name">
+                  <strong>{asset?.filename || material.name}</strong>
+                  <small>
+                    {material.name}
+                    {asset
+                      ? ` · ${formatFileSize(asset.size)}`
+                      : " · No uploaded file"}
+                  </small>
+                </span>
+                <span className="drive-explorer-type">
+                  {isVideo
+                    ? "Video"
+                    : asset?.mime === "application/pdf"
+                      ? "PDF"
+                      : "Document"}
+                </span>
                 <div className="drive-row-actions">
+                  {asset && (
+                    <a
+                      className="icon-button"
+                      href={`/api/storage/preview/${asset.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={`View ${asset.filename}`}
+                    >
+                      <Eye size={15} />
+                    </a>
+                  )}
                   <button
                     className="icon-button"
-                    aria-label={`Edit ${folder.name}`}
-                    onClick={() => openEditor(folder)}
+                    aria-label={`Edit ${material.name}`}
+                    onClick={() => openEditor(material)}
                   >
                     <Pencil size={15} />
                   </button>
                   <button
                     className="icon-button danger-text"
-                    aria-label={`Delete ${folder.name}`}
-                    onClick={() => setConfirm(folder)}
+                    aria-label={`Delete ${material.name}`}
+                    onClick={() => setConfirm(material)}
                   >
                     <Trash2 size={15} />
                   </button>
                 </div>
               </article>
-            ))}
-          </div>
-        </section>
-      )}
-      {!!materials.length && (
-        <section className="drive-section">
-          <div className="section-heading compact">
-            <h2>Files</h2>
-          </div>
-          <div className="drive-file-list">
-            {materials.map((material) => (
-              <article className="drive-file-row" key={material.id}>
-                <span className="drive-file-icon">
-                  {Number(material.video_count || 0) ? (
-                    <FileVideo size={20} />
-                  ) : (
-                    <FileText size={20} />
-                  )}
-                </span>
-                <button onClick={() => openEditor(material)}>
-                  <strong>{material.name}</strong>
-                  <small>
-                    {Number(material.video_count || 0)} videos ·{" "}
-                    {Number(material.file_count || 0)} documents
-                  </small>
-                </button>
-                <span className={`status ${material.status}`}>
-                  {material.status}
-                </span>
-                <button
-                  className="icon-button"
-                  aria-label={`Delete ${material.name}`}
-                  onClick={() => setConfirm(material)}
-                >
-                  <Trash2 size={15} />
-                </button>
-              </article>
-            ))}
-          </div>
-        </section>
+            );
+          })}
+        </div>
       )}
       {!children.length && (
         <Empty
@@ -1532,15 +1560,6 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
     [uploadedFiles, setUploadedFiles] = useState<Record<string, any>>(
       item.uploaded_files || {},
     ),
-    [assetTab, setAssetTab] = useState<"videos" | "files">(
-      item.assetTab ||
-        ((item.assets || []).some(
-          (asset: any) => asset.asset_type === "file",
-        ) &&
-        !(item.assets || []).some((asset: any) => asset.asset_type === "video")
-          ? "files"
-          : "videos"),
-    ),
     [videoAssets, setVideoAssets] = useState<any[]>(
       (item.assets || []).filter((asset: any) => asset.asset_type === "video"),
     ),
@@ -1818,147 +1837,92 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
         </div>
         {form.kind === "video" && (
           <>
-            <div
-              className="tabs material-type-tabs"
-              role="tablist"
-              aria-label="Learning material type"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={assetTab === "videos"}
-                className={assetTab === "videos" ? "active" : ""}
-                onClick={() => setAssetTab("videos")}
-              >
-                <FileVideo size={17} /> Videos <span>{videoAssets.length}</span>
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={assetTab === "files"}
-                className={assetTab === "files" ? "active" : ""}
-                onClick={() => setAssetTab("files")}
-              >
-                <FileText size={17} /> Files <span>{fileAssets.length}</span>
-              </button>
-            </div>
-            {assetTab === "videos" ? (
-              <section className="asset-section" aria-label="Videos">
-                <div className="upload-zone">
-                  <FileVideo size={32} />
-                  <h3>Upload one or more lesson videos</h3>
-                  <p>
-                    MP4, WebM, or MOV · Up to {formatUploadLimit(videoLimit)}{" "}
-                    per video · Maximum 20 videos
-                  </p>
-                  <label className="button secondary">
-                    <Upload size={16} /> Choose videos
-                    <input
-                      type="file"
-                      multiple
-                      accept="video/mp4,video/webm,video/quicktime"
-                      hidden
-                      disabled={!!uploading}
-                      onChange={(e) => {
-                        const files = Array.from(e.target.files || []);
-                        e.target.value = "";
-                        if (files.length) uploadMany(files, "video");
-                      }}
-                    />
-                  </label>
-                </div>
-                <div className="asset-list">
-                  {videoAssets.map((file, index) => (
-                    <div className="material-preview" key={file.id}>
-                      <div className="material-preview-heading">
-                        <div className="uploaded-file-icon">
+            <section className="asset-section" aria-label="Uploaded items">
+              <div className="upload-zone">
+                <Upload size={32} />
+                <h3>Upload videos and documents</h3>
+                <p>
+                  Select one or more MP4, WebM, MOV, PDF, Word, Excel,
+                  PowerPoint, text, or CSV files.
+                </p>
+                <label className="button secondary">
+                  <Upload size={16} /> Choose files
+                  <input
+                    type="file"
+                    multiple
+                    accept="video/mp4,video/webm,video/quicktime,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+                    hidden
+                    disabled={!!uploading}
+                    onChange={async (event) => {
+                      const selected = Array.from(event.target.files || []);
+                      event.target.value = "";
+                      const videos = selected.filter((file) =>
+                        file.type.startsWith("video/"),
+                      );
+                      const files = selected.filter(
+                        (file) => !file.type.startsWith("video/"),
+                      );
+                      if (videos.length) await uploadMany(videos, "video");
+                      if (files.length) await uploadMany(files, "file");
+                    }}
+                  />
+                </label>
+              </div>
+              <div className="asset-list drive-upload-list">
+                {[...videoAssets, ...fileAssets].map((file) => {
+                  const isVideo =
+                    file.asset_type === "video" ||
+                    file.mime?.startsWith("video/");
+                  return (
+                    <div className="uploaded-file" key={file.id}>
+                      <div className="uploaded-file-icon">
+                        {isVideo ? (
                           <FileVideo size={19} />
-                        </div>
-                        <div className="uploaded-file-meta">
-                          <strong>{file.filename}</strong>
-                          <span>
-                            Video {index + 1} · {formatFileSize(file.size)}
-                          </span>
-                        </div>
-                        <a
-                          className="file-action"
-                          href={`/api/storage/preview/${file.id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <Eye size={14} /> View
-                        </a>
-                        <button
-                          className="icon-button file-remove"
-                          type="button"
-                          aria-label={`Remove ${file.filename}`}
-                          onClick={() =>
-                            setVideoAssets((current) =>
-                              current.filter((asset) => asset.id !== file.id),
-                            )
-                          }
-                        >
-                          <X size={14} />
-                        </button>
+                        ) : (
+                          <FileText size={19} />
+                        )}
                       </div>
-                      <video
-                        controls
-                        preload="metadata"
-                        src={`/api/storage/preview/${file.id}`}
+                      <div className="uploaded-file-meta">
+                        <strong>{file.filename}</strong>
+                        <span>
+                          {isVideo ? "Video" : "Document"} ·{" "}
+                          {formatFileSize(file.size)}
+                        </span>
+                      </div>
+                      <a
+                        className="file-action"
+                        href={`/api/storage/preview/${file.id}`}
+                        target="_blank"
+                        rel="noreferrer"
                       >
-                        Your browser does not support video playback.
-                      </video>
+                        <Eye size={14} /> View
+                      </a>
+                      <button
+                        className="icon-button file-remove"
+                        type="button"
+                        aria-label={`Remove ${file.filename}`}
+                        onClick={() =>
+                          isVideo
+                            ? setVideoAssets((current) =>
+                                current.filter((asset) => asset.id !== file.id),
+                              )
+                            : setFileAssets((current) =>
+                                current.filter((asset) => asset.id !== file.id),
+                              )
+                        }
+                      >
+                        <X size={14} />
+                      </button>
                     </div>
-                  ))}
-                  {!videoAssets.length && (
-                    <p className="asset-empty">No videos uploaded yet.</p>
-                  )}
-                </div>
-              </section>
-            ) : (
-              <section className="asset-section" aria-label="Files">
-                <div className="upload-zone">
-                  <FileText size={32} />
-                  <h3>Upload one or more learning files</h3>
-                  <p>
-                    PDF, Word, Excel, PowerPoint, text, or CSV · Maximum 30
-                    files
+                  );
+                })}
+                {!videoAssets.length && !fileAssets.length && (
+                  <p className="asset-empty">
+                    This folder has no uploaded files yet.
                   </p>
-                  <label className="button secondary">
-                    <Upload size={16} /> Choose files
-                    <input
-                      type="file"
-                      multiple
-                      accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
-                      hidden
-                      disabled={!!uploading}
-                      onChange={(e) => {
-                        const files = Array.from(e.target.files || []);
-                        e.target.value = "";
-                        if (files.length) uploadMany(files, "file");
-                      }}
-                    />
-                  </label>
-                </div>
-                <div className="asset-list">
-                  {fileAssets.map((file, index) => (
-                    <UploadedFile
-                      key={file.id}
-                      file={file}
-                      label={`File ${index + 1}`}
-                      onRemove={() =>
-                        setFileAssets((current) =>
-                          current.filter((asset) => asset.id !== file.id),
-                        )
-                      }
-                    />
-                  ))}
-                  {!fileAssets.length && (
-                    <p className="asset-empty">No files uploaded yet.</p>
-                  )}
-                </div>
-              </section>
-            )}
+                )}
+              </div>
+            </section>
             {uploading && (
               <div role="status" className="upload-progress-panel">
                 <div className="progress-track">

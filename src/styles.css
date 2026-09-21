@@ -6238,6 +6238,85 @@ a.drive-folder-card {
   color: var(--muted);
   margin-top: 0.2rem;
 }
+.drive-explorer-list {
+  border: 1px solid var(--line);
+  border-radius: 0.95rem;
+  background: var(--card);
+  overflow: hidden;
+}
+.drive-explorer-row {
+  min-height: 4.65rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(6rem, 0.28fr) auto;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  text-decoration: none;
+  transition: background 150ms ease;
+}
+.drive-explorer-row:last-child {
+  border-bottom: 0;
+}
+.drive-explorer-row:hover {
+  background: var(--soft);
+}
+.drive-explorer-main {
+  display: contents;
+  color: inherit;
+  text-decoration: none;
+}
+.drive-explorer-name {
+  min-width: 0;
+}
+.drive-explorer-name strong,
+.drive-explorer-name small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.drive-explorer-name small {
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+.drive-explorer-type {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+.document-viewer-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-bottom: 1.25rem;
+}
+.document-viewer-header h1 {
+  max-width: 55rem;
+  margin: 0.7rem 0 0.35rem;
+  font-size: clamp(1.4rem, 3vw, 2.1rem);
+  overflow-wrap: anywhere;
+}
+.document-viewer-header p {
+  margin: 0;
+  color: var(--muted);
+}
+.pdf-viewer-shell {
+  height: min(76vh, 60rem);
+  min-height: 34rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  overflow: hidden;
+  background: #eef0ec;
+  box-shadow: 0 14px 40px rgba(25, 54, 40, 0.08);
+}
+.pdf-viewer-shell iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: white;
+}
 .student-drive-folders .drive-folder-card {
   padding: 0.9rem;
 }
@@ -6270,6 +6349,24 @@ a.drive-folder-card {
   }
   .drive-file-row .status {
     display: none;
+  }
+  .drive-explorer-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    padding: 0.7rem;
+  }
+  .drive-explorer-type {
+    display: none;
+  }
+  .document-viewer-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .document-viewer-header .button {
+    justify-content: center;
+  }
+  .pdf-viewer-shell {
+    min-height: 28rem;
+    height: 70vh;
   }
 }
 .student-module-card strong {

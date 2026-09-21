@@ -892,6 +892,22 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
     .data;
   assert.equal(lesson.videos.length, 1);
   assert.equal(lesson.files.length, 1);
+  const pdfPreview = await fetch(origin + lesson.files[0].url, {
+    headers: { Cookie: student.cookie },
+  });
+  assert.equal(pdfPreview.status, 200);
+  assert.match(pdfPreview.headers.get("content-disposition") || "", /^inline;/);
+  const pdfDownload = await fetch(
+    origin + `${lesson.files[0].url}?download=1`,
+    {
+      headers: { Cookie: student.cookie },
+    },
+  );
+  assert.equal(pdfDownload.status, 200);
+  assert.match(
+    pdfDownload.headers.get("content-disposition") || "",
+    /^attachment;/,
+  );
   assert.equal(
     (
       await request(

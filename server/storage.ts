@@ -581,5 +581,8 @@ storageRoutes.get("/media/:id/asset/:uploadId", auth, async (req, res) => {
   }, 2000);
   res.on("close", () => clearInterval(check));
   res.on("finish", () => clearInterval(check));
-  await deliverPreview(row, req, res, !row.mime.startsWith("video/"));
+  const download = req.query.download === "1";
+  const browserPreview =
+    row.mime.startsWith("video/") || row.mime === "application/pdf";
+  await deliverPreview(row, req, res, download || !browserPreview);
 });
