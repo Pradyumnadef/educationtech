@@ -1183,7 +1183,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
     [uploadedFiles, setUploadedFiles] = useState<Record<string, any>>(
       item.uploaded_files || {},
     ),
-    [assetTab, setAssetTab] = useState<"videos" | "files">(
+    [assetTab, setAssetTab] = useState<"videos" | "files" | "preview">(
       item.assetTab ||
         ((item.assets || []).some(
           (asset: any) => asset.asset_type === "file",
@@ -1485,6 +1485,16 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
               >
                 <FileText size={17} /> Files <span>{fileAssets.length}</span>
               </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={assetTab === "preview"}
+                className={assetTab === "preview" ? "active" : ""}
+                onClick={() => setAssetTab("preview")}
+              >
+                <Eye size={17} /> Preview
+                <span>{videoAssets.length + fileAssets.length}</span>
+              </button>
             </div>
             {assetTab === "videos" ? (
               <section className="asset-section" aria-label="Videos">
@@ -1559,7 +1569,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
                   )}
                 </div>
               </section>
-            ) : (
+            ) : assetTab === "files" ? (
               <section className="asset-section" aria-label="Files">
                 <div className="upload-zone">
                   <FileText size={32} />
@@ -1601,6 +1611,114 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
                     <p className="asset-empty">No files uploaded yet.</p>
                   )}
                 </div>
+              </section>
+            ) : (
+              <section
+                className="asset-section material-preview-tab"
+                aria-label="Uploaded material preview"
+              >
+                <div className="material-preview-summary">
+                  <div>
+                    <span className="eyebrow">UPLOAD PREVIEW</span>
+                    <h3>Everything attached to this learning material</h3>
+                    <p>
+                      Review videos and files before saving. You can open or
+                      remove any item here.
+                    </p>
+                  </div>
+                  <strong>
+                    {videoAssets.length + fileAssets.length} item
+                    {videoAssets.length + fileAssets.length === 1 ? "" : "s"}
+                  </strong>
+                </div>
+                {!videoAssets.length && !fileAssets.length ? (
+                  <p className="asset-empty">
+                    Nothing has been uploaded yet. Use the Videos or Files tab
+                    to add learning materials.
+                  </p>
+                ) : (
+                  <div className="preview-material-groups">
+                    {!!videoAssets.length && (
+                      <div>
+                        <h4>
+                          <FileVideo size={17} /> Videos
+                          <span>{videoAssets.length}</span>
+                        </h4>
+                        <div className="asset-list">
+                          {videoAssets.map((file, index) => (
+                            <div className="material-preview" key={file.id}>
+                              <div className="material-preview-heading">
+                                <div className="uploaded-file-icon">
+                                  <FileVideo size={19} />
+                                </div>
+                                <div className="uploaded-file-meta">
+                                  <strong>{file.filename}</strong>
+                                  <span>
+                                    Video {index + 1} —{" "}
+                                    {formatFileSize(file.size)}
+                                  </span>
+                                </div>
+                                <a
+                                  className="file-action"
+                                  href={`/api/storage/preview/${file.id}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  <Eye size={14} /> View
+                                </a>
+                                <button
+                                  className="icon-button file-remove"
+                                  type="button"
+                                  aria-label={`Remove ${file.filename}`}
+                                  onClick={() =>
+                                    setVideoAssets((current) =>
+                                      current.filter(
+                                        (asset) => asset.id !== file.id,
+                                      ),
+                                    )
+                                  }
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                              <video
+                                controls
+                                preload="metadata"
+                                src={`/api/storage/preview/${file.id}`}
+                              >
+                                Your browser does not support video playback.
+                              </video>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {!!fileAssets.length && (
+                      <div>
+                        <h4>
+                          <FileText size={17} /> Files
+                          <span>{fileAssets.length}</span>
+                        </h4>
+                        <div className="asset-list">
+                          {fileAssets.map((file, index) => (
+                            <UploadedFile
+                              key={file.id}
+                              file={file}
+                              label={`File ${index + 1}`}
+                              onRemove={() =>
+                                setFileAssets((current) =>
+                                  current.filter(
+                                    (asset) => asset.id !== file.id,
+                                  ),
+                                )
+                              }
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </section>
             )}
             {uploading && (

@@ -5440,3 +5440,59 @@ th,
   .material-preview-heading .file-action { font-size: 0; }
   .material-preview-heading .file-action svg { width: 17px; height: 17px; }
 }
+.material-preview-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid #dce5d0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f7f9f2, #fff);
+}
+.material-preview-summary h3 {
+  margin: 6px 0;
+  color: #294f3d;
+  font-size: 16px;
+}
+.material-preview-summary p {
+  margin: 0;
+  color: #87977b;
+  font-size: 10px;
+}
+.material-preview-summary > strong {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #eaf1df;
+  color: #476c56;
+  font-size: 10px;
+}
+.preview-material-groups {
+  display: grid;
+  gap: 22px;
+}
+.preview-material-groups h4 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 10px;
+  color: #476c56;
+  font-size: 12px;
+}
+.preview-material-groups h4 span {
+  min-width: 20px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #eaf1df;
+  font-size: 9px;
+  text-align: center;
+}
+@media (max-width: 620px) {
+  .material-type-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .material-type-tabs button { gap: 5px; padding-inline: 7px; }
+  .material-type-tabs button span { display: none; }
+  .material-preview-summary { display: block; }
+  .material-preview-summary > strong { display: inline-block; margin-top: 12px; }
+}
