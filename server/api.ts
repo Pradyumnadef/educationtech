@@ -475,26 +475,36 @@ api.get("/admin/overview", async (_req, res) => {
   const rawContent = await query(
     "SELECT * FROM content ORDER BY created_at DESC",
   );
-  const assetCounts = await query(
-    `SELECT content_id,
-      SUM(CASE WHEN asset_type='video' THEN 1 ELSE 0 END) AS video_count,
-      SUM(CASE WHEN asset_type='file' THEN 1 ELSE 0 END) AS file_count
-     FROM content_assets GROUP BY content_id`,
+  const assetRows = await query(
+    `SELECT a.content_id,u.id,u.filename,u.mime,u.size,a.asset_type,a.sort_order
+     FROM content_assets a JOIN uploads u ON u.id=a.upload_id AND u.state='ready'
+     UNION ALL
+     SELECT c.id AS content_id,u.id,u.filename,u.mime,u.size,'video' AS asset_type,-1 AS sort_order
+     FROM content c JOIN uploads u ON u.storage_key=c.storage_key AND u.state='ready'
+     WHERE c.storage_key<>''
+     UNION ALL
+     SELECT c.id AS content_id,u.id,u.filename,u.mime,u.size,'file' AS asset_type,-1 AS sort_order
+     FROM content c JOIN uploads u ON u.storage_key=c.resource_key AND u.state='ready'
+     WHERE c.resource_key<>''
+     ORDER BY content_id,asset_type DESC,sort_order`,
   );
-  const countsByContent = new Map(
-    assetCounts.map((row: any) => [row.content_id, row]),
-  );
-  const content = rawContent.map((row: any) => ({
-    ...publicContent(row),
-    video_count: Math.max(
-      Number(countsByContent.get(row.id)?.video_count || 0),
-      row.storage_key ? 1 : 0,
-    ),
-    file_count: Math.max(
-      Number(countsByContent.get(row.id)?.file_count || 0),
-      row.resource_key ? 1 : 0,
-    ),
-  }));
+  const assetsByContent = new Map<string, any[]>();
+  for (const asset of assetRows) {
+    const assets = assetsByContent.get(asset.content_id) || [];
+    if (!assets.some((existing: any) => existing.id === asset.id))
+      assets.push(asset);
+    assetsByContent.set(asset.content_id, assets);
+  }
+  const content = rawContent.map((row: any) => {
+    const assets = assetsByContent.get(row.id) || [];
+    return {
+      ...publicContent(row),
+      video_count: assets.filter((asset) => asset.asset_type === "video")
+        .length,
+      file_count: assets.filter((asset) => asset.asset_type === "file").length,
+      assets,
+    };
+  });
   const groups = await query("SELECT * FROM student_groups ORDER BY name");
   const members = await query("SELECT * FROM group_members");
   const grants = await query("SELECT * FROM access_grants");

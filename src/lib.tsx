@@ -38,6 +38,13 @@ export type Item = {
   resource_key?: string;
   video_count?: number;
   file_count?: number;
+  assets?: Array<{
+    id: string;
+    filename: string;
+    mime: string;
+    size: number;
+    asset_type: "video" | "file";
+  }>;
 };
 export type User = {
   id: string;

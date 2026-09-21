@@ -898,7 +898,9 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
       new URLSearchParams(useLocation().search).get("q") || "",
     ),
     [status, setStatus] = useState("all"),
-    [materialTab, setMaterialTab] = useState<"videos" | "files">("videos"),
+    [materialTab, setMaterialTab] = useState<"videos" | "files" | "preview">(
+      "videos",
+    ),
     [page, setPage] = useState(1),
     [editor, setEditor] = useState<any>(null),
     [confirm, setConfirm] = useState<Item | null>(null),
@@ -912,7 +914,9 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
       (kind !== "video" ||
         (materialTab === "videos"
           ? Number(c.video_count || 0) > 0 || Number(c.file_count || 0) === 0
-          : Number(c.file_count || 0) > 0)) &&
+          : materialTab === "files"
+            ? Number(c.file_count || 0) > 0
+            : Number(c.video_count || 0) + Number(c.file_count || 0) > 0)) &&
       `${c.name} ${c.description} ${c.tags}`
         .toLowerCase()
         .includes(debounced.toLowerCase()) &&
@@ -950,7 +954,12 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
           onClick={() =>
             setEditor({
               kind,
-              ...(kind === "video" ? { assetTab: materialTab } : {}),
+              ...(kind === "video"
+                ? {
+                    assetTab:
+                      materialTab === "preview" ? "videos" : materialTab,
+                  }
+                : {}),
             })
           }
         >
@@ -1009,6 +1018,18 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
           >
             <FileText size={17} /> Files
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={materialTab === "preview"}
+            className={materialTab === "preview" ? "active" : ""}
+            onClick={() => {
+              setMaterialTab("preview");
+              setPage(1);
+            }}
+          >
+            <Eye size={17} /> Preview
+          </button>
         </div>
       )}
       <div className="table-toolbar">
@@ -1040,63 +1061,36 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
           {rows.length} {pluralLabel}
         </span>
       </div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>{kind === "video" ? "Learning material" : "Name"}</th>
-              <th>Located in</th>
-              <th>Status</th>
-              <th>{kind === "video" ? "Uploaded items" : "Contents"}</th>
-              <th>Added</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.slice((page - 1) * 15, page * 15).map((c: Item) => (
-              <tr key={c.id}>
-                <td>
-                  <button
-                    className="content-cell"
-                    onClick={async () => {
-                      try {
-                        setEditor(await api(`/admin/content/${c.id}`));
-                      } catch (e: any) {
-                        toast(e.message, "error");
-                      }
-                    }}
-                  >
-                    <div className="mini-art">
-                      <CourseArt theme={c.thumbnail} />
-                    </div>
-                    <span>
-                      <b>{c.name}</b>
-                      <small>
-                        {c.tags?.slice(0, 2).join(" · ") ||
-                          `A ${itemLabel} of possibilities`}
-                      </small>
-                    </span>
-                  </button>
-                </td>
-                <td>{displayedParent(c)?.name || "Your library"}</td>
-                <td>
-                  <span className={`status ${c.status}`}>
-                    {c.publish_at && c.publish_at > Date.now()
-                      ? "Scheduled"
-                      : c.status}
-                  </span>
-                </td>
-                <td>
-                  {kind === "video"
-                    ? `${Number(c.video_count || 0)} video${Number(c.video_count || 0) === 1 ? "" : "s"} · ${Number(c.file_count || 0)} file${Number(c.file_count || 0) === 1 ? "" : "s"}`
-                    : `${descendants(c, data.content).filter((i) => i.kind === "video").length} lessons`}
-                </td>
-                <td>{date(c.created_at)}</td>
-                <td>
-                  <div className="table-actions">
+      {kind === "video" && materialTab === "preview" ? (
+        <MaterialPreviewLibrary
+          rows={rows.slice((page - 1) * 15, page * 15)}
+          onEdit={async (item: Item) => {
+            try {
+              setEditor(await api(`/admin/content/${item.id}`));
+            } catch (e: any) {
+              toast(e.message, "error");
+            }
+          }}
+        />
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>{kind === "video" ? "Learning material" : "Name"}</th>
+                <th>Located in</th>
+                <th>Status</th>
+                <th>{kind === "video" ? "Uploaded items" : "Contents"}</th>
+                <th>Added</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.slice((page - 1) * 15, page * 15).map((c: Item) => (
+                <tr key={c.id}>
+                  <td>
                     <button
-                      className="icon-button"
-                      aria-label={`Edit ${c.name}`}
+                      className="content-cell"
                       onClick={async () => {
                         try {
                           setEditor(await api(`/admin/content/${c.id}`));
@@ -1105,28 +1099,68 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
                         }
                       }}
                     >
-                      <Pencil size={16} />
+                      <div className="mini-art">
+                        <CourseArt theme={c.thumbnail} />
+                      </div>
+                      <span>
+                        <b>{c.name}</b>
+                        <small>
+                          {c.tags?.slice(0, 2).join(" · ") ||
+                            `A ${itemLabel} of possibilities`}
+                        </small>
+                      </span>
                     </button>
-                    <button
-                      className="icon-button danger-text"
-                      aria-label={`Delete ${c.name}`}
-                      onClick={() => setConfirm(c)}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!rows.length && (
-          <Empty
-            title="A blank page, full of possibility"
-            description={`Add a ${itemLabel} to begin building your learning library.`}
-          />
-        )}
-      </div>
+                  </td>
+                  <td>{displayedParent(c)?.name || "Your library"}</td>
+                  <td>
+                    <span className={`status ${c.status}`}>
+                      {c.publish_at && c.publish_at > Date.now()
+                        ? "Scheduled"
+                        : c.status}
+                    </span>
+                  </td>
+                  <td>
+                    {kind === "video"
+                      ? `${Number(c.video_count || 0)} video${Number(c.video_count || 0) === 1 ? "" : "s"} · ${Number(c.file_count || 0)} file${Number(c.file_count || 0) === 1 ? "" : "s"}`
+                      : `${descendants(c, data.content).filter((i) => i.kind === "video").length} lessons`}
+                  </td>
+                  <td>{date(c.created_at)}</td>
+                  <td>
+                    <div className="table-actions">
+                      <button
+                        className="icon-button"
+                        aria-label={`Edit ${c.name}`}
+                        onClick={async () => {
+                          try {
+                            setEditor(await api(`/admin/content/${c.id}`));
+                          } catch (e: any) {
+                            toast(e.message, "error");
+                          }
+                        }}
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        className="icon-button danger-text"
+                        aria-label={`Delete ${c.name}`}
+                        onClick={() => setConfirm(c)}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!rows.length && (
+            <Empty
+              title="A blank page, full of possibility"
+              description={`Add a ${itemLabel} to begin building your learning library.`}
+            />
+          )}
+        </div>
+      )}
       <Pagination total={rows.length} page={page} setPage={setPage} />
       {editor && (
         <ContentEditor
@@ -1148,6 +1182,103 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
         />
       )}
     </>
+  );
+}
+function MaterialPreviewLibrary({ rows, onEdit }: any) {
+  if (!rows.length)
+    return (
+      <Empty
+        title="Nothing to preview yet"
+        description="Upload a video or file to see it here."
+      />
+    );
+  return (
+    <div className="material-preview-library">
+      {rows.map((item: Item) => {
+        const videos = (item.assets || []).filter(
+          (asset) => asset.asset_type === "video",
+        );
+        const files = (item.assets || []).filter(
+          (asset) => asset.asset_type === "file",
+        );
+        return (
+          <article className="material-preview-card" key={item.id}>
+            <header>
+              <div>
+                <span className="eyebrow">LEARNING MATERIAL</span>
+                <h3>{item.name}</h3>
+                <p>{item.description || "No description added."}</p>
+              </div>
+              <div className="material-preview-card-actions">
+                <span className={`status ${item.status}`}>{item.status}</span>
+                <Button
+                  type="button"
+                  variant="secondary small"
+                  onClick={() => onEdit(item)}
+                >
+                  <Pencil size={14} /> Edit
+                </Button>
+              </div>
+            </header>
+            {!!videos.length && (
+              <section>
+                <h4>
+                  <FileVideo size={17} /> Videos <span>{videos.length}</span>
+                </h4>
+                <div className="material-preview-video-grid">
+                  {videos.map((video, index) => (
+                    <div className="material-preview" key={video.id}>
+                      <div className="material-preview-heading">
+                        <div className="uploaded-file-icon">
+                          <FileVideo size={19} />
+                        </div>
+                        <div className="uploaded-file-meta">
+                          <strong>{video.filename}</strong>
+                          <span>
+                            Video {index + 1} · {formatFileSize(video.size)}
+                          </span>
+                        </div>
+                        <a
+                          className="file-action"
+                          href={`/api/storage/preview/${video.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <Eye size={14} /> Open
+                        </a>
+                      </div>
+                      <video
+                        controls
+                        preload="metadata"
+                        src={`/api/storage/preview/${video.id}`}
+                      >
+                        Your browser does not support video playback.
+                      </video>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+            {!!files.length && (
+              <section>
+                <h4>
+                  <FileText size={17} /> Files <span>{files.length}</span>
+                </h4>
+                <div className="material-preview-file-list">
+                  {files.map((file, index) => (
+                    <UploadedFile
+                      key={file.id}
+                      file={file}
+                      label={`File ${index + 1}`}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+          </article>
+        );
+      })}
+    </div>
   );
 }
 function ContentEditor({ item, data, onClose, refresh }: any) {
@@ -1183,7 +1314,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
     [uploadedFiles, setUploadedFiles] = useState<Record<string, any>>(
       item.uploaded_files || {},
     ),
-    [assetTab, setAssetTab] = useState<"videos" | "files" | "preview">(
+    [assetTab, setAssetTab] = useState<"videos" | "files">(
       item.assetTab ||
         ((item.assets || []).some(
           (asset: any) => asset.asset_type === "file",
@@ -1485,16 +1616,6 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
               >
                 <FileText size={17} /> Files <span>{fileAssets.length}</span>
               </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={assetTab === "preview"}
-                className={assetTab === "preview" ? "active" : ""}
-                onClick={() => setAssetTab("preview")}
-              >
-                <Eye size={17} /> Preview
-                <span>{videoAssets.length + fileAssets.length}</span>
-              </button>
             </div>
             {assetTab === "videos" ? (
               <section className="asset-section" aria-label="Videos">
@@ -1569,7 +1690,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
                   )}
                 </div>
               </section>
-            ) : assetTab === "files" ? (
+            ) : (
               <section className="asset-section" aria-label="Files">
                 <div className="upload-zone">
                   <FileText size={32} />
@@ -1611,114 +1732,6 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
                     <p className="asset-empty">No files uploaded yet.</p>
                   )}
                 </div>
-              </section>
-            ) : (
-              <section
-                className="asset-section material-preview-tab"
-                aria-label="Uploaded material preview"
-              >
-                <div className="material-preview-summary">
-                  <div>
-                    <span className="eyebrow">UPLOAD PREVIEW</span>
-                    <h3>Everything attached to this learning material</h3>
-                    <p>
-                      Review videos and files before saving. You can open or
-                      remove any item here.
-                    </p>
-                  </div>
-                  <strong>
-                    {videoAssets.length + fileAssets.length} item
-                    {videoAssets.length + fileAssets.length === 1 ? "" : "s"}
-                  </strong>
-                </div>
-                {!videoAssets.length && !fileAssets.length ? (
-                  <p className="asset-empty">
-                    Nothing has been uploaded yet. Use the Videos or Files tab
-                    to add learning materials.
-                  </p>
-                ) : (
-                  <div className="preview-material-groups">
-                    {!!videoAssets.length && (
-                      <div>
-                        <h4>
-                          <FileVideo size={17} /> Videos
-                          <span>{videoAssets.length}</span>
-                        </h4>
-                        <div className="asset-list">
-                          {videoAssets.map((file, index) => (
-                            <div className="material-preview" key={file.id}>
-                              <div className="material-preview-heading">
-                                <div className="uploaded-file-icon">
-                                  <FileVideo size={19} />
-                                </div>
-                                <div className="uploaded-file-meta">
-                                  <strong>{file.filename}</strong>
-                                  <span>
-                                    Video {index + 1} —{" "}
-                                    {formatFileSize(file.size)}
-                                  </span>
-                                </div>
-                                <a
-                                  className="file-action"
-                                  href={`/api/storage/preview/${file.id}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  <Eye size={14} /> View
-                                </a>
-                                <button
-                                  className="icon-button file-remove"
-                                  type="button"
-                                  aria-label={`Remove ${file.filename}`}
-                                  onClick={() =>
-                                    setVideoAssets((current) =>
-                                      current.filter(
-                                        (asset) => asset.id !== file.id,
-                                      ),
-                                    )
-                                  }
-                                >
-                                  <X size={14} />
-                                </button>
-                              </div>
-                              <video
-                                controls
-                                preload="metadata"
-                                src={`/api/storage/preview/${file.id}`}
-                              >
-                                Your browser does not support video playback.
-                              </video>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {!!fileAssets.length && (
-                      <div>
-                        <h4>
-                          <FileText size={17} /> Files
-                          <span>{fileAssets.length}</span>
-                        </h4>
-                        <div className="asset-list">
-                          {fileAssets.map((file, index) => (
-                            <UploadedFile
-                              key={file.id}
-                              file={file}
-                              label={`File ${index + 1}`}
-                              onRemove={() =>
-                                setFileAssets((current) =>
-                                  current.filter(
-                                    (asset) => asset.id !== file.id,
-                                  ),
-                                )
-                              }
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
               </section>
             )}
             {uploading && (
@@ -1930,15 +1943,17 @@ function UploadedFile({ file, label, onRemove }: any) {
       >
         <Eye size={14} /> View
       </a>
-      <button
-        className="icon-button file-remove"
-        type="button"
-        aria-label={`Remove ${file.filename}`}
-        title="Remove attachment"
-        onClick={onRemove}
-      >
-        <X size={14} />
-      </button>
+      {onRemove && (
+        <button
+          className="icon-button file-remove"
+          type="button"
+          aria-label={`Remove ${file.filename}`}
+          title="Remove attachment"
+          onClick={onRemove}
+        >
+          <X size={14} />
+        </button>
+      )}
     </div>
   );
 }
