@@ -1765,6 +1765,33 @@ a:focus-visible {
   color: var(--muted);
   font-size: 0.8rem;
 }
+.attendance-location-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  color: var(--green);
+  background: var(--soft);
+}
+.attendance-location-notice > div {
+  flex: 1;
+}
+.attendance-location-notice p {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.attendance-location-notice.ready {
+  border-color: rgba(53, 105, 76, 0.24);
+}
+.attendance-location-notice.blocked {
+  border-color: rgba(180, 73, 59, 0.28);
+  color: var(--danger);
+  background: rgba(180, 73, 59, 0.05);
+}
 .attendance-location-capture {
   display: flex;
   align-items: center;
@@ -1805,6 +1832,14 @@ a:focus-visible {
   }
   .attendance-location-actions {
     flex-direction: column;
+  }
+  .attendance-location-notice {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .attendance-location-notice .button {
+    width: 100%;
+    justify-content: center;
   }
   .attendance-location-capture .button,
   .attendance-card .button {

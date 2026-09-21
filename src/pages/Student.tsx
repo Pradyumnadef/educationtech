@@ -642,40 +642,77 @@ function LearningMaterials({ data }: { data: any }) {
 }
 function StudentAttendance({ data, refresh }: { data: any; refresh: () => any }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const [locationState, setLocationState] = useState<
+    "idle" | "requesting" | "ready" | "blocked" | "unavailable"
+  >("idle");
+  const permissionRequested = useRef(false);
   const toast = useToast();
   const sessions = data.attendance || [];
-  const checkIn = (session: any) => {
+  const requestLocation = (showError = false) =>
+    new Promise<GeolocationPosition>((resolve, reject) => {
+      if (!navigator.geolocation) {
+        setLocationState("unavailable");
+        if (showError)
+          toast("This device does not support location attendance.", "error");
+        reject(new Error("Geolocation is unavailable"));
+        return;
+      }
+      setLocationState("requesting");
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLocationState("ready");
+          resolve(position);
+        },
+        (error) => {
+          setLocationState(
+            error.code === error.PERMISSION_DENIED ? "blocked" : "idle",
+          );
+          if (showError) {
+            const message =
+              error.code === error.PERMISSION_DENIED
+                ? "Location is blocked for this site. Open Chrome site settings, allow Location, then try again."
+                : "Your location could not be confirmed. Move near an open area and try again.";
+            toast(message, "error");
+          }
+          reject(error);
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+      );
+    });
+  const hasOpenSession = sessions.some((session: any) => {
+    const now = Date.now();
+    return (
+      !session.record_id &&
+      session.status === "open" &&
+      now >= Number(session.starts_at) &&
+      now <= Number(session.ends_at)
+    );
+  });
+  useEffect(() => {
+    if (!hasOpenSession || permissionRequested.current) return;
+    permissionRequested.current = true;
+    requestLocation().catch(() => undefined);
+  }, [hasOpenSession]);
+  const checkIn = async (session: any) => {
     if (!navigator.geolocation) {
       toast("This device does not support location attendance.", "error");
       return;
     }
     setBusy(session.id);
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        try {
-          await post(`/attendance/${session.id}/check-in`, {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracyM: position.coords.accuracy,
-          });
-          await refresh();
-          toast("Your attendance has been recorded.");
-        } catch (error: any) {
-          toast(error.message, "error");
-        } finally {
-          setBusy(null);
-        }
-      },
-      (error) => {
-        const message =
-          error.code === error.PERMISSION_DENIED
-            ? "Allow precise location access in your browser, then try again."
-            : "Your location could not be confirmed. Move near an open area and try again.";
-        toast(message, "error");
-        setBusy(null);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
-    );
+    try {
+      const position = await requestLocation(true);
+      await post(`/attendance/${session.id}/check-in`, {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracyM: position.coords.accuracy,
+      });
+      await refresh();
+      toast("Your attendance has been recorded.");
+    } catch (error: any) {
+      if (typeof error?.code !== "number") toast(error.message, "error");
+    } finally {
+      setBusy(null);
+    }
   };
   return (
     <>
@@ -689,6 +726,36 @@ function StudentAttendance({ data, refresh }: { data: any; refresh: () => any })
           </p>
         </div>
       </div>
+      {hasOpenSession && locationState === "requesting" && (
+        <div className="attendance-location-notice">
+          <Navigation size={18} />
+          <div>
+            <strong>Allow location in Chrome</strong>
+            <p>Choose Allow when Chrome asks. English Tech will then verify your current position.</p>
+          </div>
+        </div>
+      )}
+      {hasOpenSession && locationState === "ready" && (
+        <div className="attendance-location-notice ready">
+          <CheckCheck size={18} />
+          <div>
+            <strong>Location access is ready</strong>
+            <p>You can now mark your attendance.</p>
+          </div>
+        </div>
+      )}
+      {hasOpenSession && locationState === "blocked" && (
+        <div className="attendance-location-notice blocked">
+          <AlertTriangle size={18} />
+          <div>
+            <strong>Location is blocked in Chrome</strong>
+            <p>Tap the icon beside englishtech.in, open Permissions, set Location to Allow, then try again.</p>
+          </div>
+          <Button type="button" variant="secondary small" onClick={() => requestLocation(true).catch(() => undefined)}>
+            Try again
+          </Button>
+        </div>
+      )}
       <div className="attendance-grid">
         {sessions.map((session: any) => {
           const currentTime = Date.now();
@@ -729,11 +796,15 @@ function StudentAttendance({ data, refresh }: { data: any; refresh: () => any })
                 </div>
               ) : (
                 <Button
-                  disabled={busy === session.id || upcoming || closed}
+                  disabled={busy === session.id || locationState === "requesting" || upcoming || closed}
                   onClick={() => checkIn(session)}
                 >
                   <Navigation size={16} />
-                  {busy === session.id ? "Checking location…" : "Mark attendance"}
+                  {busy === session.id
+                    ? "Checking location…"
+                    : locationState === "requesting"
+                      ? "Allow location in Chrome"
+                      : "Mark attendance"}
                 </Button>
               )}
             </article>
@@ -747,8 +818,7 @@ function StudentAttendance({ data, refresh }: { data: any; refresh: () => any })
         />
       )}
       <p className="attendance-privacy">
-        <Lock size={14} /> Your location is requested only when you press Mark
-        attendance and is stored with that attendance record.
+        <Lock size={14} /> Your location is requested when an attendance session is open and is stored only when you mark attendance.
       </p>
     </>
   );
