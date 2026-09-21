@@ -164,6 +164,8 @@ const dashboardSlides = [
 function SubjectCarousel({ subjects }: { subjects: Item[] }) {
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const didSwipe = useRef(false);
 
   useEffect(() => {
     const reduceMotion = window.matchMedia(
@@ -172,7 +174,7 @@ function SubjectCarousel({ subjects }: { subjects: Item[] }) {
     if (paused || reduceMotion) return;
     const timer = window.setInterval(
       () => setActive((current) => (current + 1) % dashboardSlides.length),
-      5500,
+      3000,
     );
     return () => window.clearInterval(timer);
   }, [paused]);
@@ -185,6 +187,27 @@ function SubjectCarousel({ subjects }: { subjects: Item[] }) {
     );
   };
 
+  const startSwipe = (event: React.TouchEvent<HTMLElement>) => {
+    const touch = event.touches[0];
+    touchStart.current = { x: touch.clientX, y: touch.clientY };
+    didSwipe.current = false;
+    setPaused(true);
+  };
+
+  const finishSwipe = (event: React.TouchEvent<HTMLElement>) => {
+    const start = touchStart.current;
+    const touch = event.changedTouches[0];
+    touchStart.current = null;
+    setPaused(false);
+    if (!start || !touch) return;
+    const distanceX = touch.clientX - start.x;
+    const distanceY = touch.clientY - start.y;
+    if (Math.abs(distanceX) >= 42 && Math.abs(distanceX) > Math.abs(distanceY)) {
+      didSwipe.current = true;
+      move(distanceX < 0 ? 1 : -1);
+    }
+  };
+
   return (
     <section
       className="subject-carousel"
@@ -192,6 +215,12 @@ function SubjectCarousel({ subjects }: { subjects: Item[] }) {
       aria-roledescription="carousel"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
+      onTouchStart={startSwipe}
+      onTouchEnd={finishSwipe}
+      onTouchCancel={() => {
+        touchStart.current = null;
+        setPaused(false);
+      }}
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
@@ -210,8 +239,21 @@ function SubjectCarousel({ subjects }: { subjects: Item[] }) {
               aria-hidden={index !== active}
               tabIndex={index === active ? 0 : -1}
               aria-label={`Open ${subject?.name || slide.key.toUpperCase()} subject`}
+              onClick={(event) => {
+                if (didSwipe.current) {
+                  event.preventDefault();
+                  didSwipe.current = false;
+                }
+              }}
             >
               <img
+                className="subject-carousel-backdrop"
+                src={slide.image}
+                alt=""
+                aria-hidden="true"
+              />
+              <img
+                className="subject-carousel-image"
                 src={slide.image}
                 alt={slide.alt}
                 loading={index === 0 ? "eager" : "lazy"}
