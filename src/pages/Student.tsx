@@ -912,19 +912,28 @@ function SubjectDetail({ id, data }: { id: string; data: any }) {
         <>
           <div className="section-heading compact">
             <h2>Your modules</h2>
-            <span className="muted">Choose a lesson and start learning.</span>
+            <span className="muted">Choose a module to see its materials.</span>
           </div>
           <div className="subject-curriculum">
             {modules.map((module, moduleIndex) => {
               const moduleVideos = descendants(module, items).filter(
                 (item) => item.kind === "video" && item.accessible,
               );
+              const videoCount = moduleVideos.reduce(
+                (total, material) => total + Number(material.video_count || 0),
+                0,
+              );
+              const documentCount = moduleVideos.reduce(
+                (total, material) => total + Number(material.file_count || 0),
+                0,
+              );
               return (
-                <section className="module-card" key={module.id}>
-                  <Link
-                    className="module-heading module-heading-link"
-                    to={`/app/videos?module=${encodeURIComponent(module.id)}`}
-                  >
+                <Link
+                  className="module-card module-card-link"
+                  to={`/app/videos?module=${encodeURIComponent(module.id)}`}
+                  key={module.id}
+                >
+                  <div className="module-heading">
                     <span className="module-number">
                       MODULE {String(moduleIndex + 1).padStart(2, "0")}
                     </span>
@@ -933,30 +942,24 @@ function SubjectDetail({ id, data }: { id: string; data: any }) {
                       {module.description && <p>{module.description}</p>}
                     </div>
                     <span className="module-count">
-                      {moduleVideos.length}{" "}
-                      {moduleVideos.length === 1 ? "lesson" : "lessons"}
+                      Open module
                       <ArrowRight size={15} />
                     </span>
-                  </Link>
-                  <div className="module-materials video-list">
-                    {moduleVideos.map((video, videoIndex) => (
-                      <VideoRow
-                        key={video.id}
-                        video={video}
-                        index={videoIndex}
-                        progress={data.progress.find(
-                          (progress: any) => progress.video_id === video.id,
-                        )}
-                      />
-                    ))}
-                    {!moduleVideos.length && (
-                      <p className="module-empty">
-                        Your teacher has not added learning materials to this
-                        module yet.
-                      </p>
+                  </div>
+                  <div className="module-material-summary">
+                    <span>
+                      <Play size={15} /> {videoCount}{" "}
+                      {videoCount === 1 ? "video" : "videos"}
+                    </span>
+                    <span>
+                      <FileText size={15} /> {documentCount}{" "}
+                      {documentCount === 1 ? "document" : "documents"}
+                    </span>
+                    {!videoCount && !documentCount && (
+                      <small>No materials have been added yet.</small>
                     )}
                   </div>
-                </section>
+                </Link>
               );
             })}
           </div>
