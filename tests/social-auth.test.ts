@@ -43,8 +43,8 @@ async function request(route:string, body?:any, cookie='', csrf='') {
     headers: { Origin:'http://localhost:3112', 'Content-Type':'application/json', Cookie:cookie, 'X-CSRF-Token':csrf }, body: body ? JSON.stringify(body):undefined });
   return { response, data: await response.clone().json().catch(()=>null), cookie:response.headers.get('set-cookie')?.split(';')[0] || '' };
 }
-async function start(action='signup') {
-  const r = await request('/google/start',{action}); assert.equal(r.response.status,200);
+async function start(action='signup', returnTo?: string) {
+  const r = await request('/google/start',{action,...(returnTo ? {returnTo} : {})}); assert.equal(r.response.status,200);
   const redirect = new URL(r.data.url).searchParams.get('redirect_to')!;
   return { ...r, callback:'/google/callback?flow='+new URL(redirect).searchParams.get('flow')+'&code=provider-code' };
 }
@@ -55,6 +55,12 @@ test('Google callback rejects missing browser state, supports PKCE and prevents 
   const accepted = await request(r.callback,undefined,r.cookie); assert.equal(accepted.response.headers.get('location'),'/onboarding');
   const saved = await db.one('SELECT * FROM users WHERE email=?',[email]); assert.equal(saved.role,'student');
   const replay = await request(r.callback,undefined,r.cookie); assert.match(replay.response.headers.get('location')!,/authError/);
+});
+test('Google sign-in safely restores an onboarded student deep link', async()=> {
+  email='learner@example.test';
+  await db.run('UPDATE users SET status=?,onboarding=1 WHERE email=?',['active',email]);
+  const r=await start('login','/app/videos?module=module-1');
+  assert.equal((await request(r.callback,undefined,r.cookie)).response.headers.get('location'),'/app/videos?module=module-1');
 });
 test('Google cannot auto-link a teacher or authenticate an unverified identity', async()=> {
   email='teacher@example.test';

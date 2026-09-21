@@ -21,6 +21,18 @@ export function resumePath(user: any) {
   }
 }
 
+export function postSignInPath(user: any, requested?: unknown) {
+  if (!user) return "/";
+  if (user.role !== "admin" && !user.onboarding) return "/onboarding";
+  if (typeof requested !== "string" || requested.length > 2048)
+    return resumePath(user);
+  const allowed =
+    user.role === "admin"
+      ? /^\/admin(?:\/|\?|$)/.test(requested)
+      : /^\/app(?:\/|\?|$)/.test(requested);
+  return allowed ? requested : resumePath(user);
+}
+
 export function rememberWorkspaceRoute(
   user: any,
   pathname: string,

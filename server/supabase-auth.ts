@@ -41,7 +41,10 @@ socialAuth.get('/options', (_req, res) => res.json({
   sms: !!process.env.TWILIO_VERIFY_SERVICE_SID,
 }));
 socialAuth.post('/google/start', async (req, res) => {
-  const { action } = z.object({ action: z.enum(['login', 'signup', 'link']).default('login') }).parse(req.body);
+  const { action, returnTo } = z.object({
+    action: z.enum(['login', 'signup', 'link']).default('login'),
+    returnTo: z.string().max(2048).regex(/^\/(?:app|admin)(?:\/|\?|$)[^\r\n]*$/).optional(),
+  }).parse(req.body);
   if (req.headers.origin !== (process.env.APP_ORIGIN || 'http://localhost:3000'))
     return res.status(403).json({ error: 'Request origin is not allowed.' });
   if (process.env.GOOGLE_AUTH_ENABLED !== 'true')
@@ -56,7 +59,7 @@ socialAuth.post('/google/start', async (req, res) => {
     skipBrowserRedirect: true, queryParams: { prompt: 'select_account' },
   }});
   if (error || !data.url) return res.status(503).json({ error: 'Google sign-in could not start. Try again shortly.' });
-  await insert('oauth_flows', { id: flow, browser_hash: hash(browser), state: JSON.stringify(storage), action,
+  await insert('oauth_flows', { id: flow, browser_hash: hash(browser), state: JSON.stringify({ storage, returnTo }), action,
     user_id: action === 'link' ? current.id : null, expires_at: now()+300000 });
   res.cookie('english_tech_oauth', browser, { httpOnly: true, secure: production, sameSite: 'lax', path: '/api/auth/google', maxAge: 300000 });
   res.json({ url: data.url });
@@ -70,7 +73,10 @@ socialAuth.get('/google/callback', async (req, res) => {
   res.clearCookie('english_tech_oauth', { path: '/api/auth/google' });
   if (!state || typeof req.query.code !== 'string' || req.query.code.length > 2048) return fail();
   try {
-    const client = authClient(JSON.parse(state.state));
+    const saved = JSON.parse(state.state);
+    const storage = saved.storage || saved;
+    const returnTo = typeof saved.returnTo === 'string' ? saved.returnTo : '';
+    const client = authClient(storage);
     const { data, error } = await client.auth.exchangeCodeForSession(req.query.code);
     if (error || !data.session) return fail();
     const verified = await client.auth.getUser(data.session.access_token);
@@ -103,6 +109,11 @@ socialAuth.get('/google/callback', async (req, res) => {
     }
     await createSession(res, user);
     await audit(user.id, state.action === 'link' ? 'google.link' : 'google.login', user.id);
-    res.redirect(user.role === 'admin' || user.onboarding ? '/?signedIn=1' : '/onboarding');
+    const allowedReturn = user.role === 'admin'
+      ? /^\/admin(?:\/|\?|$)/.test(returnTo)
+      : /^\/app(?:\/|\?|$)/.test(returnTo);
+    res.redirect(user.role !== 'admin' && !user.onboarding
+      ? '/onboarding'
+      : allowedReturn ? returnTo : '/?signedIn=1');
   } catch { return fail(); }
 });

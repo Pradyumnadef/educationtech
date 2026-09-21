@@ -205,7 +205,7 @@ export function Logo({ light = false }: { light?: boolean }) {
     >
       <img
         className="logo-brand-image"
-        src="/assets/english-tech-brand-mark.webp"
+        src="/assets/english-tech-brand-mark.webp?v=20260921"
         alt=""
         width="96"
         height="96"

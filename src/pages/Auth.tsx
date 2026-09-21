@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowRight,
   ArrowLeft,
@@ -10,7 +10,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import { Logo, Field, Button, useAuth, useToast, post, useData } from "../lib";
-import { resumePath } from "../session";
+import { postSignInPath } from "../session";
 export default function Auth() {
   const { mode } = useParams();
   const isAdmin = mode === "admin",
@@ -20,6 +20,7 @@ export default function Auth() {
   const { data: setup } = useData<any>("/auth/setup");
   const { data: options } = useData<any>("/auth/options");
   const navigate = useNavigate(),
+    location = useLocation(),
     toast = useToast();
   const [identifier, setIdentifier] = useState(""),
     [password, setPassword] = useState(""),
@@ -95,7 +96,7 @@ export default function Auth() {
       toast(
         `Welcome${r.user.onboarding ? " back" : ""}, ${r.user.name.split(" ")[0]}!`,
       );
-      navigate(resumePath(r.user), { replace: true });
+      navigate(postSignInPath(r.user, location.state?.from), { replace: true });
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -185,6 +186,7 @@ export default function Auth() {
                   try {
                     const r = await post("/auth/google/start", {
                       action: signup ? "signup" : "login",
+                      returnTo: location.state?.from,
                     });
                     window.location.assign(r.url);
                   } catch (e: any) {

@@ -146,7 +146,7 @@ export default function Landing() {
           >
             <img
               className="scene-art hero-brand-art"
-              src="/assets/english-tech-brand-hero.webp"
+              src="/assets/english-tech-brand-hero.webp?v=20260921"
               alt="English Tech educator and learning logo"
               width="700"
               height="700"

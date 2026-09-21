@@ -49,7 +49,9 @@ function Guard({
     return (
       <Navigate
         to={admin ? "/auth/admin" : "/auth/login"}
-        state={{ from: location.pathname }}
+        state={{
+          from: `${location.pathname}${location.search}${location.hash}`,
+        }}
         replace
       />
     );
