@@ -2033,9 +2033,27 @@ a:focus-visible {
 }
 .subject-carousel-image {
   z-index: 1;
+  right: auto !important;
+  left: 50% !important;
+  width: auto !important;
+  max-width: 100%;
   object-fit: contain;
   object-position: center;
-  mix-blend-mode: multiply;
+  transform: translateX(-50%);
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 4%,
+    #000 96%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 4%,
+    #000 96%,
+    transparent 100%
+  );
 }
 .subject-carousel-arrow {
   position: absolute;
@@ -5358,6 +5376,11 @@ th,
   .subject-carousel-dots {
     bottom: 10px;
     opacity: 0.58;
+  }
+  .subject-carousel-image {
+    width: 100% !important;
+    -webkit-mask-image: none;
+    mask-image: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
