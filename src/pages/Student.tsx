@@ -541,13 +541,157 @@ function fileSize(bytes: number) {
 function LearningMaterials({ data }: { data: any }) {
   const [tab, setTab] = useState<"videos" | "documents">("videos");
   const [search, setSearch] = useState("");
+  const location = useLocation();
   const debounced = useDebounced(search);
   const items: Item[] = data.content;
-  const lessons = items.filter(
+  const selectedModuleId = new URLSearchParams(location.search).get("module");
+  useEffect(() => {
+    setSearch("");
+    setTab("videos");
+  }, [selectedModuleId]);
+  const selectedModule = items.find(
+    (item) =>
+      item.id === selectedModuleId &&
+      item.kind === "chapter" &&
+      item.accessible,
+  );
+  const allLessons = items.filter(
     (item) => item.kind === "video" && item.accessible,
   );
   const matches = (value: string) =>
     value.toLowerCase().includes(debounced.toLowerCase());
+  const moduleGroups = items
+    .filter((item) => item.kind === "chapter" && item.accessible)
+    .map((module) => {
+      const moduleIds = new Set([
+        module.id,
+        ...descendants(module, items).map((item) => item.id),
+      ]);
+      const lessons = allLessons.filter((lesson) => moduleIds.has(lesson.id));
+      return {
+        module,
+        subject: subjectOf(module, items),
+        lessons,
+        videoCount: lessons.reduce(
+          (total, lesson) => total + Number(lesson.video_count || 0),
+          0,
+        ),
+        documentCount: lessons.reduce(
+          (total, lesson) => total + Number(lesson.file_count || 0),
+          0,
+        ),
+      };
+    })
+    .filter(
+      (group) =>
+        (group.videoCount > 0 || group.documentCount > 0) &&
+        matches(
+          `${group.subject.name} ${group.module.name} ${group.module.description} ${group.lessons.map((lesson) => lesson.name).join(" ")}`,
+        ),
+    );
+  if (!selectedModule) {
+    const subjects = Array.from(
+      new Map(
+        moduleGroups.map((group) => [group.subject.id, group.subject]),
+      ).values(),
+    );
+    return (
+      <>
+        <div className="page-heading">
+          <div>
+            <span className="eyebrow">YOUR LEARNING LIBRARY</span>
+            <h1>Learning materials</h1>
+            <p>Choose a subject and module to see its videos and documents.</p>
+          </div>
+        </div>
+        <div className="student-material-toolbar module-library-search">
+          <label className="search-box">
+            <Search size={17} />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search subjects or modules…"
+              aria-label="Search subjects or modules"
+            />
+          </label>
+          <span>
+            {moduleGroups.length}{" "}
+            {moduleGroups.length === 1 ? "module" : "modules"}
+          </span>
+        </div>
+        {!moduleGroups.length ? (
+          <Empty
+            title={
+              search ? "No modules found" : "No learning materials assigned yet"
+            }
+            description={
+              search
+                ? "Try a different subject or module name."
+                : "Your teacher will share modules and learning materials here."
+            }
+          />
+        ) : (
+          <div className="student-subject-materials">
+            {subjects.map((subject) => {
+              const subjectModules = moduleGroups.filter(
+                (group) => group.subject.id === subject.id,
+              );
+              return (
+                <section className="student-subject-group" key={subject.id}>
+                  <header>
+                    <span className="student-subject-icon">
+                      <BookOpen size={19} />
+                    </span>
+                    <div>
+                      <span className="eyebrow">SUBJECT</span>
+                      <h2>{subject.name}</h2>
+                    </div>
+                    <span>
+                      {subjectModules.length}{" "}
+                      {subjectModules.length === 1 ? "module" : "modules"}
+                    </span>
+                  </header>
+                  <div className="student-module-grid">
+                    {subjectModules.map((group) => (
+                      <Link
+                        className="student-module-card"
+                        to={`/app/videos?module=${encodeURIComponent(group.module.id)}`}
+                        key={group.module.id}
+                      >
+                        <span className="student-module-label">MODULE</span>
+                        <h3>{group.module.name}</h3>
+                        {group.module.description && (
+                          <p>{group.module.description}</p>
+                        )}
+                        <div>
+                          <span>
+                            <Play size={14} /> {group.videoCount} videos
+                          </span>
+                          <span>
+                            <FileText size={14} /> {group.documentCount}{" "}
+                            documents
+                          </span>
+                        </div>
+                        <strong>
+                          Open module <ArrowRight size={15} />
+                        </strong>
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        )}
+      </>
+    );
+  }
+  const selectedIds = new Set([
+    selectedModule.id,
+    ...descendants(selectedModule, items).map((item) => item.id),
+  ]);
+  const lessons = allLessons.filter((lesson) => selectedIds.has(lesson.id));
+  const selectedSubject = subjectOf(selectedModule, items);
   const videos = lessons.filter(
     (item) =>
       Number(item.video_count) > 0 &&
@@ -567,12 +711,15 @@ function LearningMaterials({ data }: { data: any }) {
   const visibleCount = tab === "videos" ? videos.length : documents.length;
   return (
     <>
+      <Link className="back-link" to="/app/videos">
+        <ArrowLeft size={15} /> All subjects and modules
+      </Link>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">YOUR LEARNING LIBRARY</span>
-          <h1>Learning materials</h1>
+          <span className="eyebrow">{selectedSubject.name} · MODULE</span>
+          <h1>{selectedModule.name}</h1>
           <p>
-            Watch your lessons or open the documents shared by your teacher.
+            Choose Videos or Documents to open the materials in this module.
           </p>
         </div>
       </div>
