@@ -15,6 +15,31 @@ import { cleanupUploadsIfUnreferenced } from "./storage.ts";
 export const api = Router();
 const uid = (req: any) => req.user.id;
 const text = z.string().trim().min(1).max(200);
+const attendanceSessionSchema = z.object({
+  title: text,
+  locationName: z.string().trim().min(1).max(200),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  radiusM: z.number().int().min(10).max(1000),
+  startsAt: z.number().int().positive(),
+  endsAt: z.number().int().positive(),
+});
+function distanceMetres(
+  latitudeA: number,
+  longitudeA: number,
+  latitudeB: number,
+  longitudeB: number,
+) {
+  const radians = (degrees: number) => (degrees * Math.PI) / 180;
+  const latitudeDelta = radians(latitudeB - latitudeA);
+  const longitudeDelta = radians(longitudeB - longitudeA);
+  const a =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(radians(latitudeA)) *
+      Math.cos(radians(latitudeB)) *
+      Math.sin(longitudeDelta / 2) ** 2;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 const documentMimes = new Set([
   "application/pdf",
   "application/msword",
@@ -252,6 +277,13 @@ api.get("/learning", async (req, res) => {
      ORDER BY a.due_at`,
     [user.id, user.id, user.id],
   );
+  const attendance = await query(
+    `SELECT s.*,r.id AS record_id,r.checked_at,r.distance_m,r.accuracy_m
+     FROM attendance_sessions s
+     LEFT JOIN attendance_records r ON r.session_id=s.id AND r.user_id=?
+     WHERE s.ends_at>? ORDER BY s.starts_at`,
+    [user.id, now() - 86400000],
+  );
   for (const a of assignments) {
     a.resources = await assignmentResources(a.id);
     a.submission = await one(
@@ -269,6 +301,7 @@ api.get("/learning", async (req, res) => {
     announcements,
     events,
     assignments,
+    attendance,
     settings: settings
       ? JSON.parse(settings.value)
       : {
@@ -277,6 +310,62 @@ api.get("/learning", async (req, res) => {
           welcome: "A little progress, every day.",
         },
   });
+});
+api.post("/attendance/:id/check-in", async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== "student") bad("Student access required.", 403);
+  const body = z
+    .object({
+      latitude: z.number().min(-90).max(90),
+      longitude: z.number().min(-180).max(180),
+      accuracyM: z.number().min(0).max(5000),
+    })
+    .parse(req.body);
+  const attendance = await one(
+    "SELECT * FROM attendance_sessions WHERE id=?",
+    [req.params.id],
+  );
+  if (!attendance) bad("This attendance session was not found.", 404);
+  const time = now();
+  if (
+    attendance.status !== "open" ||
+    time < Number(attendance.starts_at) ||
+    time > Number(attendance.ends_at)
+  )
+    bad("This attendance session is not open.", 409);
+  if (body.accuracyM > Math.max(30, Number(attendance.radius_m)))
+    bad(
+      "Your location accuracy is too low. Move near an open area, enable precise location, and try again.",
+      422,
+    );
+  const distance = distanceMetres(
+    Number(attendance.latitude),
+    Number(attendance.longitude),
+    body.latitude,
+    body.longitude,
+  );
+  if (distance > Number(attendance.radius_m))
+    bad(
+      `You are ${Math.round(distance)} metres from the attendance location. Move within ${attendance.radius_m} metres and try again.`,
+      403,
+    );
+  const record = await one(
+    `INSERT INTO attendance_records(id,session_id,user_id,latitude,longitude,accuracy_m,distance_m,checked_at)
+     VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(session_id,user_id) DO NOTHING RETURNING id,checked_at,distance_m`,
+    [
+      id(),
+      attendance.id,
+      user.id,
+      body.latitude,
+      body.longitude,
+      body.accuracyM,
+      distance,
+      time,
+    ],
+  );
+  if (!record) bad("Your attendance is already recorded.", 409);
+  await audit(user.id, "attendance.check-in", attendance.id, String(distance));
+  res.json(record);
 });
 api.post("/assignments/:id/start", async (req, res) => {
   if ((req as any).user.role !== "student")
@@ -581,6 +670,16 @@ api.get("/admin/overview", async (_req, res) => {
   );
   for (const s of submissions)
     s.files = submissionFileRows.filter((f: any) => f.submission_id === s.id);
+  const attendanceSessions = await query(
+    `SELECT s.*,COUNT(r.id) AS attendance_count
+     FROM attendance_sessions s LEFT JOIN attendance_records r ON r.session_id=s.id
+     GROUP BY s.id ORDER BY s.created_at DESC`,
+  );
+  const attendanceRecords = await query(
+    `SELECT r.*,u.name AS student_name,u.email AS student_email
+     FROM attendance_records r JOIN users u ON u.id=r.user_id
+     ORDER BY r.checked_at DESC`,
+  );
   res.json({
     students,
     content,
@@ -600,6 +699,12 @@ api.get("/admin/overview", async (_req, res) => {
           weeklyGoal: 120,
         },
     contacts,
+    attendance: attendanceSessions.map((session: any) => ({
+      ...session,
+      records: attendanceRecords.filter(
+        (record: any) => record.session_id === session.id,
+      ),
+    })),
     coursework: coursework.map((a: any) => ({
       ...a,
       targets: assignmentTargets.filter((t: any) => t.assignment_id === a.id),
@@ -620,6 +725,47 @@ api.get("/admin/students", async (req, res) => {
     [q, q, (page - 1) * 25],
   );
   res.json(rows);
+});
+api.post("/admin/attendance", async (req, res) => {
+  const body = attendanceSessionSchema.parse(req.body);
+  if (body.endsAt <= body.startsAt)
+    bad("The attendance closing time must be after its opening time.");
+  if (body.endsAt - body.startsAt > 24 * 60 * 60 * 1000)
+    bad("An attendance session can remain open for up to 24 hours.");
+  const session = await insert("attendance_sessions", {
+    id: id(),
+    teacher_id: uid(req),
+    title: body.title,
+    location_name: body.locationName,
+    latitude: body.latitude,
+    longitude: body.longitude,
+    radius_m: body.radiusM,
+    starts_at: body.startsAt,
+    ends_at: body.endsAt,
+    status: "open",
+    created_at: now(),
+  });
+  await audit(uid(req), "attendance.create", session.id, body.title);
+  res.json(session);
+});
+api.patch("/admin/attendance/:id", async (req, res) => {
+  const body = z.object({ status: z.enum(["open", "closed"]) }).parse(req.body);
+  const session = await one("SELECT id FROM attendance_sessions WHERE id=?", [
+    req.params.id,
+  ]);
+  if (!session) bad("Attendance session not found.", 404);
+  await update("attendance_sessions", body, session.id);
+  await audit(uid(req), "attendance.status", session.id, body.status);
+  res.json({ ok: true });
+});
+api.delete("/admin/attendance/:id", async (req, res) => {
+  const session = await one("SELECT id FROM attendance_sessions WHERE id=?", [
+    req.params.id,
+  ]);
+  if (!session) bad("Attendance session not found.", 404);
+  await run("DELETE FROM attendance_sessions WHERE id=?", [session.id]);
+  await audit(uid(req), "attendance.delete", session.id);
+  res.json({ ok: true });
 });
 api.post("/admin/students", async (req, res) => {
   const b = z

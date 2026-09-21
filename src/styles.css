@@ -1708,6 +1708,101 @@ a:focus-visible {
   padding: 33px 19px 15px;
   overflow-y: auto;
 }
+
+/* Location attendance */
+.attendance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.attendance-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.25rem;
+}
+.attendance-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--green);
+}
+.attendance-card h2,
+.attendance-card p {
+  margin: 0;
+}
+.attendance-card p {
+  color: var(--muted);
+}
+.attendance-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem 1.1rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.attendance-meta span,
+.attendance-confirmed,
+.attendance-privacy {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.attendance-confirmed {
+  width: fit-content;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.7rem;
+  color: var(--green);
+  background: var(--soft);
+  font-weight: 700;
+}
+.attendance-card .button {
+  width: fit-content;
+  margin-top: auto;
+}
+.attendance-privacy {
+  margin-top: 1.25rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.attendance-location-capture {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  background: var(--soft);
+}
+.attendance-location-capture p,
+.attendance-report-heading p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+}
+.attendance-report-heading {
+  margin-bottom: 1rem;
+}
+.attendance-report-heading b {
+  font-size: 1.05rem;
+}
+.attendance-card .card-actions {
+  margin-top: auto;
+}
+@media (max-width: 760px) {
+  .attendance-grid {
+    grid-template-columns: 1fr;
+  }
+  .attendance-location-capture {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .attendance-location-capture .button,
+  .attendance-card .button {
+    width: 100%;
+    justify-content: center;
+  }
+}
 .sidebar-logo {
   margin: 0 15px 42px;
   display: flex;

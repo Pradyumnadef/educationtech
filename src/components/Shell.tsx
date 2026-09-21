@@ -21,6 +21,7 @@ import {
   Leaf,
   GraduationCap,
   ClipboardList,
+  MapPin,
 } from "lucide-react";
 import {
   Logo,
@@ -36,6 +37,7 @@ import {
 const studentNav = [
   ["", "Overview", Home],
   ["assignments", "Assignments", ClipboardList],
+  ["attendance", "Attendance", MapPin],
   ["subjects", "My subjects", Shapes],
   ["videos", "Learning materials", Play],
   ["progress", "My progress", ChartNoAxesCombined],
@@ -47,6 +49,7 @@ const adminNav = [
   ["groups", "Student groups", GraduationCap],
   ["library", "Content drive", FileText],
   ["assignments", "Assignments", ClipboardList],
+  ["attendance", "Attendance", MapPin],
   ["access", "Content access", KeyRound],
   ["analytics", "Analytics", ChartNoAxesCombined],
   ["announcements", "Announcements", Megaphone],

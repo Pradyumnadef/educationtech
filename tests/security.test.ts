@@ -691,6 +691,107 @@ test("nested content folders inherit access, reject cycles, and hide drafts", as
     404,
   );
 });
+test("attendance enforces time, GPS radius, accuracy, ownership, and one check-in", async () => {
+  const created = await request(
+    "/admin/attendance",
+    "POST",
+    {
+      title: "Secure attendance",
+      locationName: "Test campus",
+      latitude: 20,
+      longitude: 85,
+      radiusM: 50,
+      startsAt: Date.now() - 60000,
+      endsAt: Date.now() + 600000,
+    },
+    teacher,
+  );
+  assert.equal(created.status, 200, JSON.stringify(created.data));
+  const sessionId = created.data.id;
+  assert.equal(
+    (
+      await request(
+        `/attendance/${sessionId}/check-in`,
+        "POST",
+        { latitude: 20.01, longitude: 85.01, accuracyM: 10 },
+        student,
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await request(
+        `/attendance/${sessionId}/check-in`,
+        "POST",
+        { latitude: 20, longitude: 85, accuracyM: 100 },
+        student,
+      )
+    ).status,
+    422,
+  );
+  const checkIn = await request(
+    `/attendance/${sessionId}/check-in`,
+    "POST",
+    { latitude: 20.0001, longitude: 85.0001, accuracyM: 8 },
+    student,
+  );
+  assert.equal(checkIn.status, 200, JSON.stringify(checkIn.data));
+  assert.ok(checkIn.data.distance_m < 50);
+  assert.equal(
+    (
+      await request(
+        `/attendance/${sessionId}/check-in`,
+        "POST",
+        { latitude: 20, longitude: 85, accuracyM: 5 },
+        student,
+      )
+    ).status,
+    409,
+  );
+  const learning = await request("/learning", "GET", undefined, student);
+  assert.ok(
+    learning.data.attendance.some(
+      (session: any) => session.id === sessionId && session.record_id,
+    ),
+  );
+  const overview = await request("/admin/overview", "GET", undefined, teacher);
+  const session = overview.data.attendance.find(
+    (entry: any) => entry.id === sessionId,
+  );
+  assert.equal(session.records.length, 1);
+  assert.equal(session.records[0].user_id, "user-1");
+  assert.equal(
+    (
+      await request(
+        "/admin/attendance",
+        "POST",
+        {
+          title: "Not allowed",
+          locationName: "Campus",
+          latitude: 20,
+          longitude: 85,
+          radiusM: 50,
+          startsAt: Date.now(),
+          endsAt: Date.now() + 60000,
+        },
+        student,
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await request(
+        `/admin/attendance/${sessionId}`,
+        "DELETE",
+        undefined,
+        teacher,
+      )
+    ).status,
+    200,
+  );
+});
 test("progress is owned by session and watch time is bounded by real elapsed time", async () => {
   const r = await request(
     "/progress/python-4",

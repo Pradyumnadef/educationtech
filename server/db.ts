@@ -96,9 +96,21 @@ export async function update(
       [...Object.values(record), recordId],
     );
 }
+const attendanceSchema = `
+CREATE TABLE IF NOT EXISTS attendance_sessions (id TEXT PRIMARY KEY, teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL, location_name TEXT NOT NULL DEFAULT '', latitude REAL NOT NULL, longitude REAL NOT NULL, radius_m INTEGER NOT NULL DEFAULT 50, starts_at BIGINT NOT NULL, ends_at BIGINT NOT NULL, status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed')), created_at BIGINT NOT NULL);
+CREATE TABLE IF NOT EXISTS attendance_records (id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES attendance_sessions(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, latitude REAL NOT NULL, longitude REAL NOT NULL, accuracy_m REAL NOT NULL, distance_m REAL NOT NULL, checked_at BIGINT NOT NULL, UNIQUE(session_id,user_id));
+CREATE INDEX IF NOT EXISTS idx_attendance_session_time ON attendance_sessions(status,starts_at,ends_at);
+CREATE INDEX IF NOT EXISTS idx_attendance_record_session ON attendance_records(session_id,checked_at);
+CREATE INDEX IF NOT EXISTS idx_attendance_record_user ON attendance_records(user_id,checked_at);
+`;
+async function ensureAttendanceSchema() {
+  for (const statement of attendanceSchema.split(";").filter((s) => s.trim()))
+    await run(statement);
+}
 export async function initDB() {
   if (pool && process.env.DATABASE_MANAGED_SCHEMA === "true") {
     await query("SELECT id FROM platform_owner LIMIT 1");
+    await ensureAttendanceSchema();
     return;
   }
   const schema = `
@@ -152,6 +164,7 @@ CREATE INDEX IF NOT EXISTS idx_submission_student ON assignment_submissions(user
 `;
   for (const statement of schema.split(";").filter((s) => s.trim()))
     await run(statement);
+  await ensureAttendanceSchema();
 }
 // The singleton claim and account are committed together. PostgreSQL's
 // transaction lock also serializes requests across separate app instances.

@@ -34,6 +34,9 @@ import {
   Folder,
   FolderPlus,
   ChevronRight,
+  MapPin,
+  Navigation,
+  Target,
 } from "lucide-react";
 import Teachers from "./Teachers";
 import Shell from "../components/Shell";
@@ -83,6 +86,8 @@ export default function Admin() {
     body = <ContentDrive key={location.search} data={data} refresh={refresh} />;
   else if (route === "assignments")
     body = <Coursework data={data} refresh={refresh} />;
+  else if (route === "attendance")
+    body = <Attendance data={data} refresh={refresh} />;
   else if (route === "access")
     body = <Assignments data={data} refresh={refresh} />;
   else if (route === "announcements")
@@ -2190,6 +2195,239 @@ function UploadedFile({ file, label, onRemove }: any) {
         </button>
       )}
     </div>
+  );
+}
+function Attendance({ data, refresh }: any) {
+  const localDateTime = (time: number) => {
+    const value = new Date(time);
+    return new Date(value.getTime() - value.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+  };
+  const emptyForm = () => ({
+    title: "Class attendance",
+    locationName: "Synergy Institute of Technology, Bhubaneswar",
+    latitude: "",
+    longitude: "",
+    radiusM: 50,
+    startsAt: localDateTime(Date.now()),
+    endsAt: localDateTime(Date.now() + 30 * 60000),
+  });
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState<any>(emptyForm);
+  const [busy, setBusy] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [selected, setSelected] = useState<any>(null);
+  const [removing, setRemoving] = useState<any>(null);
+  const toast = useToast();
+  const sessions = data.attendance || [];
+  const captureLocation = () => {
+    if (!navigator.geolocation)
+      return toast("This device does not support location capture.", "error");
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setForm((current: any) => ({
+          ...current,
+          latitude: position.coords.latitude.toFixed(7),
+          longitude: position.coords.longitude.toFixed(7),
+        }));
+        setLocating(false);
+        toast("Attendance location captured.");
+      },
+      () => {
+        setLocating(false);
+        toast(
+          "Allow precise location access, or enter the coordinates manually.",
+          "error",
+        );
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
+  };
+  return (
+    <>
+      <Heading
+        eyebrow="PRESENT, VERIFIED, READY TO LEARN."
+        title="Location-based attendance."
+        description="Open a timed attendance session and allow check-in only within your chosen campus radius."
+      >
+        <Button onClick={() => setCreating(true)}>
+          <Plus size={16} /> New attendance
+        </Button>
+      </Heading>
+      <div className="assignment-summary grid three">
+        <Stat icon={MapPin} label="Sessions" value={sessions.length} />
+        <Stat
+          icon={Clock}
+          label="Open now"
+          value={sessions.filter((session: any) =>
+            session.status === "open" && Date.now() >= Number(session.starts_at) && Date.now() <= Number(session.ends_at)).length}
+        />
+        <Stat
+          icon={CheckCheck}
+          label="Check-ins"
+          value={sessions.reduce((count: number, session: any) => count + session.records.length, 0)}
+        />
+      </div>
+      <div className="attendance-grid teacher-attendance-grid">
+        {sessions.map((session: any) => {
+          const upcoming = Date.now() < Number(session.starts_at);
+          const expired = Date.now() > Number(session.ends_at);
+          const open = session.status === "open" && !upcoming && !expired;
+          return (
+            <article className="panel attendance-card" key={session.id}>
+              <div className="attendance-card-top">
+                <span className={`status ${open ? "published" : "draft"}`}>
+                  {open ? "Open" : upcoming && session.status === "open" ? "Scheduled" : "Closed"}
+                </span>
+                <MapPin size={21} />
+              </div>
+              <h2>{session.title}</h2>
+              <p>{session.location_name}</p>
+              <div className="attendance-meta">
+                <span><Clock size={15} /> {new Date(session.starts_at).toLocaleString()}</span>
+                <span><Target size={15} /> {session.radius_m} metre radius</span>
+                <span><Users size={15} /> {session.records.length} present</span>
+              </div>
+              <div className="card-actions">
+                <Button variant="secondary small" onClick={() => setSelected(session)}>
+                  <Eye size={14} /> View attendance
+                </Button>
+                {!expired && (
+                  <Button
+                    variant="ghost small"
+                    onClick={async () => {
+                      try {
+                        await patch(`/admin/attendance/${session.id}`, { status: open ? "closed" : "open" });
+                        await refresh();
+                      } catch (error: any) {
+                        toast(error.message, "error");
+                      }
+                    }}
+                  >
+                    {open ? "Close" : "Reopen"}
+                  </Button>
+                )}
+                <Button variant="ghost small" onClick={() => setRemoving(session)}>
+                  <Trash2 size={14} /> Delete
+                </Button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+      {!sessions.length && (
+        <Empty
+          title="Create your first attendance session"
+          description="Capture the institute location, choose the allowed radius, and set the attendance time."
+        >
+          <Button onClick={() => setCreating(true)}><Plus size={16} /> New attendance</Button>
+        </Empty>
+      )}
+      {creating && (
+        <Modal title="Create attendance session" onClose={() => !busy && setCreating(false)} wide>
+          <form
+            className="assignment-form attendance-form"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setBusy(true);
+              try {
+                await post("/admin/attendance", {
+                  ...form,
+                  latitude: Number(form.latitude),
+                  longitude: Number(form.longitude),
+                  radiusM: Number(form.radiusM),
+                  startsAt: new Date(form.startsAt).getTime(),
+                  endsAt: new Date(form.endsAt).getTime(),
+                });
+                await refresh();
+                setCreating(false);
+                setForm(emptyForm());
+                toast("Attendance session is ready.");
+              } catch (error: any) {
+                toast(error.message, "error");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <div className="grid two">
+              <Field label="Session title">
+                <input required maxLength={200} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
+              </Field>
+              <Field label="Location name">
+                <input required maxLength={200} value={form.locationName} onChange={(event) => setForm({ ...form, locationName: event.target.value })} />
+              </Field>
+            </div>
+            <div className="attendance-location-capture">
+              <div>
+                <strong>Attendance centre</strong>
+                <p>Stand at the centre of the allowed area and capture this device’s precise location.</p>
+              </div>
+              <Button type="button" variant="secondary" disabled={locating} onClick={captureLocation}>
+                <Navigation size={16} /> {locating ? "Finding location…" : "Use my current location"}
+              </Button>
+            </div>
+            <div className="grid three">
+              <Field label="Latitude">
+                <input required type="number" step="any" min={-90} max={90} value={form.latitude} onChange={(event) => setForm({ ...form, latitude: event.target.value })} placeholder="20.0000000" />
+              </Field>
+              <Field label="Longitude">
+                <input required type="number" step="any" min={-180} max={180} value={form.longitude} onChange={(event) => setForm({ ...form, longitude: event.target.value })} placeholder="85.0000000" />
+              </Field>
+              <Field label="Allowed radius (metres)">
+                <input required type="number" min={10} max={1000} value={form.radiusM} onChange={(event) => setForm({ ...form, radiusM: event.target.value })} />
+                <small>Use 25 metres for a 50-metre diameter, or 50 for a 50-metre radius.</small>
+              </Field>
+            </div>
+            <div className="grid two">
+              <Field label="Opens at"><input required type="datetime-local" value={form.startsAt} onChange={(event) => setForm({ ...form, startsAt: event.target.value })} /></Field>
+              <Field label="Closes at"><input required type="datetime-local" value={form.endsAt} onChange={(event) => setForm({ ...form, endsAt: event.target.value })} /></Field>
+            </div>
+            <div className="modal-actions">
+              <Button type="button" variant="secondary" onClick={() => setCreating(false)}>Cancel</Button>
+              <Button disabled={busy || locating}><MapPin size={16} /> {busy ? "Creating…" : "Open attendance"}</Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+      {selected && (
+        <Modal title={selected.title} onClose={() => setSelected(null)} wide>
+          <div className="attendance-report-heading">
+            <div><b>{selected.records.length} students present</b><p>{selected.location_name} · {selected.radius_m} metre radius</p></div>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Student</th><th>Checked in</th><th>Distance</th><th>GPS accuracy</th></tr></thead>
+              <tbody>
+                {selected.records.map((record: any) => (
+                  <tr key={record.id}>
+                    <td><b>{record.student_name}</b><small>{record.student_email}</small></td>
+                    <td>{new Date(record.checked_at).toLocaleString()}</td>
+                    <td>{Math.round(record.distance_m)} m</td>
+                    <td>{Math.round(record.accuracy_m)} m</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {!selected.records.length && <Empty title="No check-ins yet" description="Student attendance will appear here as it is recorded." />}
+        </Modal>
+      )}
+      {removing && (
+        <Confirm
+          title="Delete this attendance session?"
+          description="This permanently removes the session and every attendance record in it."
+          onClose={() => setRemoving(null)}
+          onConfirm={async () => {
+            await del(`/admin/attendance/${removing.id}`);
+            setRemoving(null);
+            await refresh();
+          }}
+        />
+      )}
+    </>
   );
 }
 function Coursework({ data, refresh }: any) {

@@ -27,6 +27,8 @@ import {
   Upload,
   Timer,
   AlertTriangle,
+  MapPin,
+  Navigation,
   X,
 } from "lucide-react";
 import Shell from "../components/Shell";
@@ -124,6 +126,8 @@ export default function Student({
   else if (route[0] === "progress") body = <Progress data={data} />;
   else if (route[0] === "assignments")
     body = <StudentAssignments data={data} refresh={refresh} />;
+  else if (route[0] === "attendance")
+    body = <StudentAttendance data={data} refresh={refresh} />;
   else if (route[0] === "videos") body = <LearningMaterials data={data} />;
   else if (route[0] === "subjects")
     body = <Library type="subjects" data={data} />;
@@ -635,6 +639,119 @@ function fileSize(bytes: number) {
 }
 function LearningMaterials({ data }: { data: any }) {
   return <StudentDrive data={data} basePath="/app/videos" />;
+}
+function StudentAttendance({ data, refresh }: { data: any; refresh: () => any }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const toast = useToast();
+  const sessions = data.attendance || [];
+  const checkIn = (session: any) => {
+    if (!navigator.geolocation) {
+      toast("This device does not support location attendance.", "error");
+      return;
+    }
+    setBusy(session.id);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          await post(`/attendance/${session.id}/check-in`, {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracyM: position.coords.accuracy,
+          });
+          await refresh();
+          toast("Your attendance has been recorded.");
+        } catch (error: any) {
+          toast(error.message, "error");
+        } finally {
+          setBusy(null);
+        }
+      },
+      (error) => {
+        const message =
+          error.code === error.PERMISSION_DENIED
+            ? "Allow precise location access in your browser, then try again."
+            : "Your location could not be confirmed. Move near an open area and try again.";
+        toast(message, "error");
+        setBusy(null);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
+  };
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">LOCATION-VERIFIED ATTENDANCE</span>
+          <h1>Mark your attendance.</h1>
+          <p>
+            Attendance is available only during the teacher’s scheduled time
+            and inside the allowed campus area.
+          </p>
+        </div>
+      </div>
+      <div className="attendance-grid">
+        {sessions.map((session: any) => {
+          const currentTime = Date.now();
+          const upcoming = currentTime < Number(session.starts_at);
+          const closed =
+            session.status !== "open" || currentTime > Number(session.ends_at);
+          const attended = Boolean(session.record_id);
+          return (
+            <article className="panel attendance-card" key={session.id}>
+              <div className="attendance-card-top">
+                <span
+                  className={`status ${attended ? "published" : closed ? "draft" : "active"}`}
+                >
+                  {attended
+                    ? "Recorded"
+                    : upcoming
+                      ? "Upcoming"
+                      : closed
+                        ? "Closed"
+                        : "Open now"}
+                </span>
+                <MapPin size={21} />
+              </div>
+              <h2>{session.title}</h2>
+              <p>{session.location_name}</p>
+              <div className="attendance-meta">
+                <span>
+                  <Clock size={15} /> {new Date(session.starts_at).toLocaleString()}
+                </span>
+                <span>
+                  <Target size={15} /> Within {session.radius_m} metres
+                </span>
+              </div>
+              {attended ? (
+                <div className="attendance-confirmed">
+                  <CheckCheck size={18} /> Recorded at{" "}
+                  {new Date(session.checked_at).toLocaleTimeString()}
+                </div>
+              ) : (
+                <Button
+                  disabled={busy === session.id || upcoming || closed}
+                  onClick={() => checkIn(session)}
+                >
+                  <Navigation size={16} />
+                  {busy === session.id ? "Checking location…" : "Mark attendance"}
+                </Button>
+              )}
+            </article>
+          );
+        })}
+      </div>
+      {!sessions.length && (
+        <Empty
+          title="No attendance session is available"
+          description="Your teacher will create a location-based attendance session when class begins."
+        />
+      )}
+      <p className="attendance-privacy">
+        <Lock size={14} /> Your location is requested only when you press Mark
+        attendance and is stored with that attendance record.
+      </p>
+    </>
+  );
 }
 function StudentDrive({
   data,
