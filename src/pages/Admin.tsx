@@ -2198,6 +2198,11 @@ function UploadedFile({ file, label, onRemove }: any) {
   );
 }
 function Attendance({ data, refresh }: any) {
+  const synergyCampus = {
+    locationName: "Synergy Institute of Technology, Bhubaneswar",
+    latitude: "20.3473125",
+    longitude: "85.8998125",
+  };
   const localDateTime = (time: number) => {
     const value = new Date(time);
     return new Date(value.getTime() - value.getTimezoneOffset() * 60000)
@@ -2206,10 +2211,8 @@ function Attendance({ data, refresh }: any) {
   };
   const emptyForm = () => ({
     title: "Class attendance",
-    locationName: "Synergy Institute of Technology, Bhubaneswar",
-    latitude: "",
-    longitude: "",
-    radiusM: 50,
+    ...synergyCampus,
+    radiusM: 25,
     startsAt: localDateTime(Date.now()),
     endsAt: localDateTime(Date.now() + 30 * 60000),
   });
@@ -2238,8 +2241,7 @@ function Attendance({ data, refresh }: any) {
       () => {
         setLocating(false);
         toast(
-          "Allow precise location access, or enter the coordinates manually.",
-          "error",
+          "Location permission is unavailable. The Synergy Institute preset is still available.",
         );
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
@@ -2363,11 +2365,22 @@ function Attendance({ data, refresh }: any) {
             <div className="attendance-location-capture">
               <div>
                 <strong>Attendance centre</strong>
-                <p>Stand at the centre of the allowed area and capture this device’s precise location.</p>
+                <p>Use the saved institute location, or capture another attendance centre from this device.</p>
               </div>
-              <Button type="button" variant="secondary" disabled={locating} onClick={captureLocation}>
-                <Navigation size={16} /> {locating ? "Finding location…" : "Use my current location"}
-              </Button>
+              <div className="attendance-location-actions">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setForm((current: any) => ({ ...current, ...synergyCampus }));
+                    toast("Synergy Institute location selected.");
+                  }}
+                >
+                  <MapPin size={16} /> Use Synergy Institute location
+                </Button>
+                <Button type="button" variant="secondary" disabled={locating} onClick={captureLocation}>
+                  <Navigation size={16} /> {locating ? "Finding location…" : "Use my current location"}
+                </Button>
+              </div>
             </div>
             <div className="grid three">
               <Field label="Latitude">

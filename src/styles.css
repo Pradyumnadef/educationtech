@@ -1780,6 +1780,12 @@ a:focus-visible {
   margin: 0.25rem 0 0;
   color: var(--muted);
 }
+.attendance-location-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
 .attendance-report-heading {
   margin-bottom: 1rem;
 }
@@ -1795,6 +1801,9 @@ a:focus-visible {
   }
   .attendance-location-capture {
     align-items: stretch;
+    flex-direction: column;
+  }
+  .attendance-location-actions {
     flex-direction: column;
   }
   .attendance-location-capture .button,
