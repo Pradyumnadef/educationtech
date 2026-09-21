@@ -31,6 +31,7 @@ import {
   X,
 } from "lucide-react";
 import Shell from "../components/Shell";
+import PdfViewer from "../components/PdfViewer";
 import {
   api,
   post,
@@ -779,9 +780,7 @@ function DocumentViewer({
         </a>
       </div>
       {isPdf ? (
-        <div className="pdf-viewer-shell">
-          <iframe src={assetUrl} title={`PDF viewer: ${asset.filename}`} />
-        </div>
+        <PdfViewer url={assetUrl} filename={asset.filename} />
       ) : (
         <Empty
           title="Preview is available for PDF files"

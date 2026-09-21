@@ -6267,6 +6267,15 @@ a.drive-folder-card {
   color: inherit;
   text-decoration: none;
 }
+.drive-preview-trigger {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
 .drive-explorer-name {
   min-width: 0;
 }
@@ -6302,20 +6311,80 @@ a.drive-folder-card {
   margin: 0;
   color: var(--muted);
 }
-.pdf-viewer-shell {
-  height: min(76vh, 60rem);
-  min-height: 34rem;
+.pdf-canvas-viewer {
   border: 1px solid var(--line);
   border-radius: 1rem;
   overflow: hidden;
   background: #eef0ec;
   box-shadow: 0 14px 40px rgba(25, 54, 40, 0.08);
 }
-.pdf-viewer-shell iframe {
-  width: 100%;
-  height: 100%;
-  border: 0;
+.pdf-viewer-toolbar {
+  min-height: 3.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+}
+.pdf-viewer-toolbar > div {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.pdf-viewer-toolbar span {
+  min-width: 6.5rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+.pdf-canvas-stage {
+  position: relative;
+  height: min(72vh, 58rem);
+  min-height: 34rem;
+  padding: 1rem;
+  overflow: auto;
+  text-align: center;
+}
+.pdf-canvas-stage canvas {
+  display: inline-block;
+  max-width: none;
   background: white;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+}
+.pdf-viewer-loading,
+.pdf-viewer-error {
+  position: absolute;
+  inset: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  color: var(--muted);
+  background: #eef0ec;
+  z-index: 2;
+}
+.pdf-viewer-loading svg {
+  animation: spin 900ms linear infinite;
+}
+.pdf-viewer-error {
+  color: var(--danger);
+}
+.teacher-preview-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  color: var(--muted);
+}
+.teacher-video-preview {
+  display: block;
+  width: 100%;
+  max-height: 70vh;
+  border-radius: 0.9rem;
+  background: #10281c;
 }
 .student-drive-folders .drive-folder-card {
   padding: 0.9rem;
@@ -6364,9 +6433,20 @@ a.drive-folder-card {
   .document-viewer-header .button {
     justify-content: center;
   }
-  .pdf-viewer-shell {
+  .pdf-viewer-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .pdf-viewer-toolbar > div {
+    justify-content: center;
+  }
+  .pdf-canvas-stage {
     min-height: 28rem;
-    height: 70vh;
+    height: 66vh;
+  }
+  .teacher-preview-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 .student-module-card strong {

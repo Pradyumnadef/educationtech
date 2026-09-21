@@ -455,7 +455,7 @@ storageRoutes.get("/preview/:id", auth, admin, async (req, res) => {
     return res
       .status(404)
       .json({ error: "File not found or still processing." });
-  await deliverPreview(row, req, res);
+  await deliverPreview(row, req, res, req.query.download === "1");
 });
 storageRoutes.get(
   "/assignment/:assignmentId/resource/:uploadId",

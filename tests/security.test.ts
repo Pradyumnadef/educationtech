@@ -871,6 +871,15 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
   assert.equal(preview.status, 206);
   assert.equal(preview.headers.get("content-range"), "bytes 0-7/64");
   assert.equal((await preview.arrayBuffer()).byteLength, 8);
+  const teacherDownload = await fetch(
+    origin + `/api/storage/preview/${documentPrep.data.id}?download=1`,
+    { headers: { Cookie: teacher.cookie } },
+  );
+  assert.equal(teacherDownload.status, 200);
+  assert.match(
+    teacherDownload.headers.get("content-disposition") || "",
+    /^attachment;/,
+  );
   assert.equal(
     (
       await request(

@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import Teachers from "./Teachers";
 import Shell from "../components/Shell";
+import PdfViewer from "../components/PdfViewer";
 import {
   api,
   post,
@@ -869,6 +870,7 @@ function ContentDrive({ data, refresh }: any) {
   const currentId = new URLSearchParams(location.search).get("folder");
   const [query, setQuery] = useState("");
   const [editor, setEditor] = useState<any>(null);
+  const [preview, setPreview] = useState<any>(null);
   const [confirm, setConfirm] = useState<Item | null>(null);
   const toast = useToast();
   const items: Item[] = data.content;
@@ -1029,18 +1031,27 @@ function ContentDrive({ data, refresh }: any) {
                 key={`${material.id}-${asset?.id || index}`}
                 role="listitem"
               >
-                <span className="drive-file-icon">
-                  {isVideo ? <FileVideo size={20} /> : <FileText size={20} />}
-                </span>
-                <span className="drive-explorer-name">
-                  <strong>{asset?.filename || material.name}</strong>
-                  <small>
-                    {material.name}
-                    {asset
-                      ? ` · ${formatFileSize(asset.size)}`
-                      : " · No uploaded file"}
-                  </small>
-                </span>
+                <button
+                  className="drive-explorer-main drive-preview-trigger"
+                  onClick={() =>
+                    asset
+                      ? setPreview({ asset, material })
+                      : openEditor(material)
+                  }
+                >
+                  <span className="drive-file-icon">
+                    {isVideo ? <FileVideo size={20} /> : <FileText size={20} />}
+                  </span>
+                  <span className="drive-explorer-name">
+                    <strong>{asset?.filename || material.name}</strong>
+                    <small>
+                      {material.name}
+                      {asset
+                        ? ` · ${formatFileSize(asset.size)}`
+                        : " · No uploaded file"}
+                    </small>
+                  </span>
+                </button>
                 <span className="drive-explorer-type">
                   {isVideo
                     ? "Video"
@@ -1050,15 +1061,13 @@ function ContentDrive({ data, refresh }: any) {
                 </span>
                 <div className="drive-row-actions">
                   {asset && (
-                    <a
+                    <button
                       className="icon-button"
-                      href={`/api/storage/preview/${asset.id}`}
-                      target="_blank"
-                      rel="noreferrer"
+                      onClick={() => setPreview({ asset, material })}
                       aria-label={`View ${asset.filename}`}
                     >
                       <Eye size={15} />
-                    </a>
+                    </button>
                   )}
                   <button
                     className="icon-button"
@@ -1105,6 +1114,43 @@ function ContentDrive({ data, refresh }: any) {
           onClose={() => setEditor(null)}
           refresh={refresh}
         />
+      )}
+      {preview && (
+        <Modal
+          title={preview.asset.filename}
+          onClose={() => setPreview(null)}
+          wide
+        >
+          <div className="teacher-preview-actions">
+            <span>
+              {preview.material.name} · {formatFileSize(preview.asset.size)}
+            </span>
+            <a
+              className="button secondary small"
+              href={`/api/storage/preview/${preview.asset.id}?download=1`}
+            >
+              <Download size={15} /> Download
+            </a>
+          </div>
+          {preview.asset.mime === "application/pdf" ? (
+            <PdfViewer
+              url={`/api/storage/preview/${preview.asset.id}`}
+              filename={preview.asset.filename}
+            />
+          ) : preview.asset.mime?.startsWith("video/") ? (
+            <video
+              className="teacher-video-preview"
+              src={`/api/storage/preview/${preview.asset.id}`}
+              controls
+              preload="metadata"
+            />
+          ) : (
+            <Empty
+              title="Preview is available for PDF and video files"
+              description="Use Download to open this file in the appropriate application."
+            />
+          )}
+        </Modal>
       )}
       {confirm && (
         <Confirm
