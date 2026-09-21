@@ -75,7 +75,10 @@ select,
 textarea {
   width: 100%;
   border: 1px solid #dfe4da;
-  background: #fff;
+  background:
+    radial-gradient(circle at 8% 24%, rgba(215, 227, 195, 0.72), transparent 34%),
+    radial-gradient(circle at 91% 78%, rgba(232, 218, 190, 0.58), transparent 36%),
+    linear-gradient(135deg, #f3f6ea 0%, #fbfaf3 48%, #eef3e6 100%);
   border-radius: 8px;
   padding: 12px 13px;
   color: #293b30;
@@ -2028,17 +2031,11 @@ a:focus-visible {
   width: 100%;
   height: 100%;
 }
-.subject-carousel-backdrop {
-  object-fit: cover;
-  object-position: center;
-  filter: blur(22px) saturate(0.82);
-  opacity: 0.14;
-  transform: scale(1.07);
-}
 .subject-carousel-image {
   z-index: 1;
   object-fit: contain;
   object-position: center;
+  mix-blend-mode: multiply;
 }
 .subject-carousel-arrow {
   position: absolute;

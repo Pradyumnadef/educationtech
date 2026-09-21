@@ -247,12 +247,6 @@ function SubjectCarousel({ subjects }: { subjects: Item[] }) {
               }}
             >
               <img
-                className="subject-carousel-backdrop"
-                src={slide.image}
-                alt=""
-                aria-hidden="true"
-              />
-              <img
                 className="subject-carousel-image"
                 src={slide.image}
                 alt={slide.alt}
