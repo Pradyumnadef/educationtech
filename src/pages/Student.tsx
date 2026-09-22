@@ -709,14 +709,15 @@ function StudentAttendance({ data, refresh }: { data: any; refresh: () => any })
     } catch (caughtError) {
       const error = caughtError as GeolocationPositionError;
       const permission = await readLocationPermission();
-      const blocked =
-        permission === "denied" ||
-        (permission === undefined && error.code === error.PERMISSION_DENIED);
+      // A disabled device location service can report PERMISSION_DENIED even
+      // though the site itself is still allowed. Only the Permissions API can
+      // confirm a persistent browser-level block.
+      const blocked = permission === "denied";
       setLocationState(blocked ? "blocked" : "unavailable");
       if (showError) {
         const message = blocked
           ? "Location is blocked for this site. Open Chrome site settings, allow Location, then try again."
-          : "Chrome is allowed, but your device could not provide its location. Turn on device Location or GPS, then try again.";
+          : "Turn on Location or GPS on your device, then request location again.";
         toast(message, "error");
       }
       throw error;
@@ -803,11 +804,11 @@ function StudentAttendance({ data, refresh }: { data: any; refresh: () => any })
         <div className="attendance-location-notice blocked">
           <AlertTriangle size={18} />
           <div>
-            <strong>Chrome is allowed, but the device location is unavailable</strong>
-            <p>Turn on Location or GPS on your device. On Windows, also enable Location services and desktop-app access, then try again.</p>
+            <strong>Turn on device location</strong>
+            <p>Turn on Location or GPS. On Windows, also enable Location services and desktop-app access, then use the button below.</p>
           </div>
           <Button type="button" variant="secondary small" onClick={() => requestLocation(true).catch(() => undefined)}>
-            Check location again
+            Request location again
           </Button>
         </div>
       )}
