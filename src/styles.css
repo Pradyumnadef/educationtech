@@ -5413,6 +5413,71 @@ td b {
   }
 }
 
+/* Keep the public site readable on cream surfaces and small screens. */
+.landing .eyebrow,
+.landing .hero-copy > p,
+.landing .scene-caption,
+.landing .scene-caption span,
+.landing .values-strip span,
+.landing .section-heading p,
+.landing .public-subject p,
+.landing .public-subject small,
+.landing .why-copy > p,
+.landing .benefit p,
+.landing .growth-bottom,
+.landing .quote-section > p,
+.landing .quote-section .small-note,
+.landing .faq-section p,
+.landing .step p,
+.landing .footer-main p,
+.landing .footer-main > div > a:not(.logo),
+.landing .footer-main button,
+.landing .footer-bottom {
+  color: #5f6b53;
+}
+.landing .growth-note,
+.landing .why-copy h2 em,
+.landing .step > span {
+  color: #5c7044;
+}
+
+@media (max-width: 760px) {
+  .landing .eyebrow,
+  .landing .scene-caption,
+  .landing .scene-caption span,
+  .landing .values-strip span,
+  .landing .quote-section > p,
+  .landing .quote-section .small-note,
+  .landing .footer-bottom {
+    font-size: 12px;
+  }
+  .landing .hero-copy > p,
+  .landing .section-heading p,
+  .landing .public-subject p,
+  .landing .public-subject small,
+  .landing .why-copy > p,
+  .landing .benefit p,
+  .landing .step p,
+  .landing .faq-section p,
+  .landing .footer-main p,
+  .landing .footer-main > div > a:not(.logo),
+  .landing .footer-main button {
+    font-size: 13px;
+  }
+  .landing .hero .pill,
+  .landing .floating-card small,
+  .landing .scene-label {
+    font-size: 10px;
+  }
+  .landing .floating-card b,
+  .landing .hero-actions .button,
+  .landing .hero-actions .text-button,
+  .landing .hero-proof b,
+  .landing .hero-proof p {
+    font-size: 12px;
+  }
+}
+
 /* Readable secondary text and compact display refinements. */
 .muted,
 .eyebrow,
