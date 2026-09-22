@@ -17,7 +17,6 @@ import {
   FileVideo,
   CheckCheck,
   UserPlus,
-  KeyRound,
   Lock,
   Unlock,
   BarChart3,
@@ -92,8 +91,6 @@ export default function Admin() {
     body = <Coursework data={data} refresh={refresh} />;
   else if (route === "attendance")
     body = <Attendance data={data} refresh={refresh} />;
-  else if (route === "access")
-    body = <Assignments data={data} refresh={refresh} />;
   else if (route === "announcements")
     body = <Announcements data={data} refresh={refresh} />;
   else if (route === "analytics") body = <Analytics data={data} />;
@@ -313,7 +310,7 @@ function Students({ data, refresh }: any) {
     <>
       <Heading
         title="Every learner, a possibility."
-        description="Support your students, shape their access, and see how they’re growing."
+        description="Support your students and see how they’re growing."
       >
         <Button onClick={() => setAdding(true)}>
           <UserPlus size={17} /> Add student
@@ -566,8 +563,7 @@ function Pagination({
 function StudentDetail({ student: s, data, onClose, refresh }: any) {
   const toast = useToast(),
     [editing, setEditing] = useState(false),
-    [name, setName] = useState(s.name),
-    [reset, setReset] = useState(false);
+    [name, setName] = useState(s.name);
   const p = data.progress.filter((p: any) => p.user_id === s.id),
     groups = data.members
       .filter((m: any) => m.user_id === s.id)
@@ -643,14 +639,8 @@ function StudentDetail({ student: s, data, onClose, refresh }: any) {
         </div>
       ))}
       <div className="modal-actions">
-        <Link className="button" to={`/admin/assignments?student=${s.id}`}>
-          Assign content <KeyRound size={15} />
-        </Link>
         <Button variant="secondary" onClick={() => setEditing(!editing)}>
           <Pencil size={15} /> Edit name
-        </Button>
-        <Button variant="danger" onClick={() => setReset(true)}>
-          Reset access
         </Button>
       </div>
       {editing && (
@@ -677,17 +667,6 @@ function StudentDetail({ student: s, data, onClose, refresh }: any) {
           <Button type="submit">Save</Button>
         </form>
       )}
-      {reset && (
-        <Confirm
-          title="Reset all access?"
-          description="This revokes individual assignments and removes the student from all groups. Learning progress is kept."
-          onClose={() => setReset(false)}
-          onConfirm={async () => {
-            await post(`/admin/students/${s.id}/reset-access`);
-            refresh();
-          }}
-        />
-      )}
     </Modal>
   );
 }
@@ -701,7 +680,7 @@ function Groups({ data, refresh }: any) {
     <>
       <Heading
         title="Grow better, together."
-        description="Bring learners into classes and assign a shared path forward."
+        description="Bring learners together and manage class membership."
       >
         <Button
           onClick={() => {
@@ -816,8 +795,7 @@ function Groups({ data, refresh }: any) {
       {selected && !adding && (
         <Modal title={selected.name} onClose={() => setSelected(null)}>
           <p className="muted">
-            Changes take effect immediately. Group assignments follow
-            membership.
+            Membership changes take effect immediately.
           </p>
           <div className="member-list">
             {data.students.map((s: any) => (
@@ -849,18 +827,12 @@ function Groups({ data, refresh }: any) {
               </label>
             ))}
           </div>
-          <Link
-            className="button"
-            to={`/admin/assignments?group=${selected.id}`}
-          >
-            Assign to this group <ArrowRightIcon />
-          </Link>
         </Modal>
       )}
       {confirm && (
         <Confirm
           title="Remove this group?"
-          description="Its members remain registered, but will lose any access inherited only through this group."
+          description="Its members remain registered and will simply leave this group."
           onClose={() => setConfirm(null)}
           onConfirm={async () => {
             await del(`/admin/groups/${confirm.id}`);
@@ -870,9 +842,6 @@ function Groups({ data, refresh }: any) {
       )}
     </>
   );
-}
-function ArrowRightIcon() {
-  return <ArrowUpRight size={16} />;
 }
 function ContentDrive({ data, refresh }: any) {
   const location = useLocation();
@@ -3063,315 +3032,6 @@ function CourseworkDetails({ assignment, data, refresh, onClose }: any) {
         )}
       </div>
     </Modal>
-  );
-}
-function Assignments({ data, refresh }: any) {
-  const params = new URLSearchParams(useLocation().search);
-  const [targetType, setTargetType] = useState(
-      params.has("group") ? "group" : "student",
-    ),
-    [targetId, setTargetId] = useState(
-      params.get("student") || params.get("group") || "",
-    ),
-    [contentIds, setContentIds] = useState<string[]>([]),
-    [kind, setKind] = useState("subject"),
-    [subject, setSubject] = useState(""),
-    [q, setQ] = useState(""),
-    [status, setStatus] = useState("assigned"),
-    [busy, setBusy] = useState(false),
-    [confirm, setConfirm] = useState<any>(null),
-    toast = useToast();
-  const subjects = data.content.filter((c: Item) => c.kind === "subject"),
-    root = data.content.find((c: Item) => c.id === subject),
-    visible = data.content.filter(
-      (c: Item) =>
-        c.kind === kind &&
-        c.name.toLowerCase().includes(q.toLowerCase()) &&
-        (!root ||
-          c.id === root.id ||
-          descendants(root, data.content).some((n) => n.id === c.id)),
-    );
-  const grants = data.grants.filter(
-    (g: any) => !targetId || g.user_id === targetId || g.group_id === targetId,
-  );
-  return (
-    <>
-      <Heading
-        title="The right lessons. The right learners."
-        description="Shape a personal learning path with precise, immediate access control."
-      />
-      <div className="assignment-layout">
-        <section className="panel">
-          <div className="numbered-title">
-            <span>01</span>
-            <h3>Choose your curious minds</h3>
-          </div>
-          <div className="tabs">
-            <button
-              className={targetType === "student" ? "active" : ""}
-              onClick={() => {
-                setTargetType("student");
-                setTargetId("");
-              }}
-            >
-              Individual student
-            </button>
-            <button
-              className={targetType === "group" ? "active" : ""}
-              onClick={() => {
-                setTargetType("group");
-                setTargetId("");
-              }}
-            >
-              Student group
-            </button>
-          </div>
-          <Field label={targetType === "student" ? "Student" : "Group"}>
-            <select
-              value={targetId}
-              onChange={(e) => setTargetId(e.target.value)}
-              required
-            >
-              <option value="">Select a {targetType}</option>
-              {(targetType === "student" ? data.students : data.groups).map(
-                (s: any) => (
-                  <option value={s.id} key={s.id}>
-                    {s.name}
-                    {s.email ? ` · ${s.email}` : ""}
-                  </option>
-                ),
-              )}
-            </select>
-          </Field>
-          <div className="numbered-title mt">
-            <span>02</span>
-            <h3>Build their path</h3>
-          </div>
-          <div className="grid two">
-            <Field label="Content level">
-              <select
-                value={kind}
-                onChange={(e) => {
-                  setKind(e.target.value);
-                  setContentIds([]);
-                }}
-              >
-                {["subject", "folder", "video"].map((k) => (
-                  <option key={k} value={k}>
-                    {contentKindLabel(k).replace(/^./, (c) => c.toUpperCase())}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Subject filter">
-              <select
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-              >
-                <option value="">All subjects</option>
-                {subjects.map((s: Item) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-          <label className="search-box">
-            <Search size={16} />
-            <input
-              placeholder="Find content…"
-              aria-label="Search content to assign"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </label>
-          <div className="assignment-picker">
-            {visible.map((c: Item) => (
-              <label key={c.id}>
-                <input
-                  type="checkbox"
-                  checked={contentIds.includes(c.id)}
-                  onChange={(e) =>
-                    setContentIds((v) =>
-                      e.target.checked
-                        ? [...v, c.id]
-                        : v.filter((id) => id !== c.id),
-                    )
-                  }
-                />
-                <span>
-                  <b>{c.name}</b>
-                  <small>
-                    {pathOf(c, data.content)} · {c.status}
-                  </small>
-                </span>
-                <BookOpen size={16} />
-              </label>
-            ))}
-            {!visible.length && (
-              <p className="muted">
-                No matching content. Create it in the library first.
-              </p>
-            )}
-          </div>
-          <div className="numbered-title mt">
-            <span>03</span>
-            <h3>Set their access</h3>
-          </div>
-          <Field label="Permission">
-            <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="assigned">Allow access</option>
-              <option value="revoked">Revoke access</option>
-            </select>
-          </Field>
-          <Button
-            className="full"
-            disabled={!targetId || !contentIds.length}
-            onClick={() => setConfirm({ assignment: true })}
-          >
-            <KeyRound size={16} /> Review {contentIds.length}{" "}
-            {contentIds.length === 1 ? "assignment" : "assignments"}
-          </Button>
-        </section>
-        <aside>
-          <section className="assignment-explainer">
-            <ShieldCheck size={32} />
-            <h2>
-              A space that’s
-              <br />
-              securely theirs.
-            </h2>
-            <p>
-              Assigning a subject or folder includes every published item inside
-              it, including future additions.
-            </p>
-            <p>
-              Individual revocations override group access. Group revocations
-              remove that group’s permission; independent assignments still
-              apply.
-            </p>
-            <div>
-              <Check size={16} /> Checked on every request
-            </div>
-            <div>
-              <Check size={16} /> Interests never grant access
-            </div>
-            <div>
-              <Check size={16} /> Student progress is preserved
-            </div>
-          </section>
-        </aside>
-      </div>
-      <div className="section-heading compact">
-        <h2>Existing assignments</h2>
-        <span className="muted">{grants.length} permissions</span>
-      </div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Learner / group</th>
-              <th>Content</th>
-              <th>Access</th>
-              <th>Assigned</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {grants.map((g: any) => (
-              <tr key={g.id}>
-                <td>
-                  {data.students.find((s: any) => s.id === g.user_id)?.name ||
-                    data.groups.find((s: any) => s.id === g.group_id)?.name}
-                </td>
-                <td>
-                  {data.content.find((c: Item) => c.id === g.content_id)?.name}
-                </td>
-                <td>
-                  <span className={`status ${g.status}`}>{g.status}</span>
-                </td>
-                <td>{date(g.created_at)}</td>
-                <td>
-                  <Button
-                    variant="secondary small"
-                    onClick={() => setConfirm({ grant: g })}
-                  >
-                    {g.status === "assigned" ? (
-                      <Lock size={13} />
-                    ) : (
-                      <Unlock size={13} />
-                    )}{" "}
-                    {g.status === "assigned" ? "Revoke" : "Restore"}
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!grants.length && (
-          <Empty
-            title="Their path is yours to shape"
-            description="Select content above to make your first assignment."
-          />
-        )}
-      </div>
-      {confirm && (
-        <Modal title="Confirm access changes" onClose={() => setConfirm(null)}>
-          <p className="muted">
-            {confirm.grant
-              ? `${confirm.grant.status === "assigned" ? "Revoke" : "Restore"} this assignment? Future requests immediately use the updated permission.`
-              : `${status === "assigned" ? "Allow" : "Revoke"} access to ${contentIds.length} selected item(s) for ${(targetType === "student" ? data.students : data.groups).find((s: any) => s.id === targetId)?.name}?`}
-          </p>
-          {!confirm.grant && (
-            <ul className="review-list">
-              {contentIds.map((id) => (
-                <li key={id}>
-                  {data.content.find((c: Item) => c.id === id)?.name}
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="modal-actions">
-            <Button variant="secondary" onClick={() => setConfirm(null)}>
-              Cancel
-            </Button>
-            <Button
-              busy={busy}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  if (confirm.grant)
-                    await patch(`/admin/assignments/${confirm.grant.id}`, {
-                      status:
-                        confirm.grant.status === "assigned"
-                          ? "revoked"
-                          : "assigned",
-                    });
-                  else
-                    await post("/admin/assignments", {
-                      targetType,
-                      targetId,
-                      contentIds,
-                      status,
-                    });
-                  refresh();
-                  setConfirm(null);
-                  setContentIds([]);
-                  toast("Access updated. The learning path is ready.");
-                } catch (e: any) {
-                  toast(e.message, "error");
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              Confirm access <Check size={16} />
-            </Button>
-          </div>
-        </Modal>
-      )}
-    </>
   );
 }
 function Announcements({ data, refresh }: any) {
