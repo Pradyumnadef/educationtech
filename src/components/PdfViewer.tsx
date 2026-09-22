@@ -3,6 +3,8 @@ import {
   ChevronLeft,
   ChevronRight,
   LoaderCircle,
+  Maximize2,
+  Minimize2,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -98,6 +100,7 @@ export default function PdfViewer({
   url: string;
   filename: string;
 }) {
+  const viewerRef = useRef<HTMLElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [document, setDocument] = useState<any>(null);
   const [page, setPage] = useState(1);
@@ -106,6 +109,19 @@ export default function PdfViewer({
   const [width, setWidth] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreenSupported, setFullscreenSupported] = useState(true);
+
+  useEffect(() => {
+    const updateFullscreen = () =>
+      setFullscreen(document.fullscreenElement === viewerRef.current);
+    setFullscreenSupported(
+      Boolean(document.fullscreenEnabled && viewerRef.current?.requestFullscreen),
+    );
+    document.addEventListener("fullscreenchange", updateFullscreen);
+    return () =>
+      document.removeEventListener("fullscreenchange", updateFullscreen);
+  }, []);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -175,9 +191,20 @@ export default function PdfViewer({
       });
     if (closest !== page) setPage(closest);
   };
+  const toggleFullscreen = async () => {
+    if (!viewerRef.current || !fullscreenSupported) return;
+    try {
+      if (document.fullscreenElement === viewerRef.current)
+        await document.exitFullscreen();
+      else await viewerRef.current.requestFullscreen();
+    } catch {
+      setFullscreenSupported(false);
+    }
+  };
 
   return (
     <section
+      ref={viewerRef}
       className="pdf-canvas-viewer"
       aria-label={`PDF viewer: ${filename}`}
     >
@@ -220,6 +247,16 @@ export default function PdfViewer({
             aria-label="Zoom in"
           >
             <ZoomIn size={18} />
+          </button>
+          <button
+            type="button"
+            className="icon-button pdf-fullscreen-button"
+            disabled={!fullscreenSupported}
+            onClick={toggleFullscreen}
+            aria-label={fullscreen ? "Exit PDF fullscreen" : "View PDF fullscreen"}
+            title={fullscreen ? "Exit fullscreen" : "View fullscreen"}
+          >
+            {fullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
           </button>
         </div>
       </div>

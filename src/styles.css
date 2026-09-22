@@ -6701,6 +6701,28 @@ a.drive-folder-card {
   background: #eef0ec;
   box-shadow: 0 14px 40px rgba(25, 54, 40, 0.08);
 }
+.pdf-canvas-viewer:fullscreen,
+.pdf-canvas-viewer:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  border: 0;
+  border-radius: 0;
+  background: #eef0ec;
+}
+.pdf-canvas-viewer:fullscreen .pdf-viewer-toolbar,
+.pdf-canvas-viewer:-webkit-full-screen .pdf-viewer-toolbar {
+  flex: 0 0 auto;
+  padding-top: max(0.55rem, env(safe-area-inset-top));
+}
+.pdf-canvas-viewer:fullscreen .pdf-canvas-stage,
+.pdf-canvas-viewer:-webkit-full-screen .pdf-canvas-stage {
+  min-height: 0;
+  max-height: none;
+  height: auto;
+  flex: 1 1 auto;
+}
 .pdf-viewer-toolbar {
   min-height: 3.5rem;
   display: flex;
@@ -6721,6 +6743,9 @@ a.drive-folder-card {
   text-align: center;
   color: var(--muted);
   font-size: 0.86rem;
+}
+.pdf-fullscreen-button {
+  margin-left: 0.35rem;
 }
 .pdf-canvas-stage {
   position: relative;
