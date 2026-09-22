@@ -23,7 +23,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { z } from "zod";
 import { one, run, insert, id, now, dataDir, production } from "./db.ts";
-import { auth, admin, accessContext, canAccess, hash } from "./security.ts";
+import { auth, admin, accessContext, canViewContent, hash } from "./security.ts";
 import { promoteUpload } from "./promote-upload.ts";
 export const storageRoutes = Router();
 const mediaDir = path.join(dataDir, "media");
@@ -503,14 +503,14 @@ storageRoutes.get(
     await deliverDownload(row, req, res);
   },
 );
-// Every byte-range request checks the current session and grants. The private object URL never leaves the server.
+// Every byte-range request checks the current session and publication state. The private object URL never leaves the server.
 storageRoutes.get("/media/:id/:type", auth, async (req, res) => {
   const ctx = await accessContext((req as any).user);
   const video = ctx.nodes.find((n: any) => n.id === req.params.id);
-  if (!video || !canAccess(ctx, video.id))
+  if (!video || !canViewContent(ctx, video.id))
     return res
       .status(403)
-      .json({ error: "This content has not been assigned to your account." });
+      .json({ error: "This content is not available." });
   const type = req.params.type;
   const key =
     type === "video"
@@ -540,7 +540,7 @@ storageRoutes.get("/media/:id/:type", auth, async (req, res) => {
         "SELECT id FROM sessions WHERE id=? AND expires_at>?",
         [(req as any).session.id, now()],
       );
-      if (!user || !live || !canAccess(await accessContext(user), video.id))
+      if (!user || !live || !canViewContent(await accessContext(user), video.id))
         res.destroy();
     } catch {
       res.destroy();
@@ -553,10 +553,10 @@ storageRoutes.get("/media/:id/:type", auth, async (req, res) => {
 storageRoutes.get("/media/:id/asset/:uploadId", auth, async (req, res) => {
   const ctx = await accessContext((req as any).user);
   const content = ctx.nodes.find((node: any) => node.id === req.params.id);
-  if (!content || !canAccess(ctx, content.id))
+  if (!content || !canViewContent(ctx, content.id))
     return res
       .status(403)
-      .json({ error: "This content has not been assigned to your account." });
+      .json({ error: "This content is not available." });
   const row = await one(
     `SELECT u.* FROM content_assets a JOIN uploads u ON u.id=a.upload_id AND u.state='ready'
      WHERE a.content_id=? AND u.id=?`,
@@ -573,7 +573,7 @@ storageRoutes.get("/media/:id/asset/:uploadId", auth, async (req, res) => {
         "SELECT id FROM sessions WHERE id=? AND expires_at>?",
         [(req as any).session.id, now()],
       );
-      if (!user || !live || !canAccess(await accessContext(user), content.id))
+      if (!user || !live || !canViewContent(await accessContext(user), content.id))
         res.destroy();
     } catch {
       res.destroy();

@@ -418,7 +418,7 @@ function Students({ data, refresh }: any) {
                             description:
                               s.status === "active"
                                 ? "This student will be signed out and lose access until reactivated."
-                                : "This student will be able to sign in and access assigned content.",
+                                : "This student will be able to sign in and view published content.",
                             action: async () => {
                               await patch(`/admin/students/${s.id}`, {
                                 status:
@@ -569,13 +569,7 @@ function StudentDetail({ student: s, data, onClose, refresh }: any) {
   const toast = useToast(),
     [editing, setEditing] = useState(false),
     [name, setName] = useState(s.name);
-  const p = data.progress.filter((p: any) => p.user_id === s.id),
-    groups = data.members
-      .filter((m: any) => m.user_id === s.id)
-      .map((m: any) => m.group_id),
-    grants = data.grants.filter(
-      (g: any) => g.user_id === s.id || groups.includes(g.group_id),
-    );
+  const p = data.progress.filter((p: any) => p.user_id === s.id);
   return (
     <Modal title="A learner’s journey" onClose={onClose} wide>
       <div className="student-detail-header">
@@ -615,22 +609,6 @@ function StudentDetail({ student: s, data, onClose, refresh }: any) {
           <span key={i}>{i}</span>
         ))}
       </div>
-      <h3>Assigned content</h3>
-      {grants.map((g: any) => (
-        <div className="assignment-row" key={g.id}>
-          <div>
-            <b>
-              {data.content.find((c: Item) => c.id === g.content_id)?.name ||
-                "Removed content"}
-            </b>
-            <small>
-              {g.group_id ? "Via student group" : "Individual assignment"}
-            </small>
-          </div>
-          <span className={`status ${g.status}`}>{g.status}</span>
-        </div>
-      ))}
-      {!grants.length && <p className="muted">No content assigned yet.</p>}
       <h3 className="mt">Watch history & progress</h3>
       {p.map((v: any) => (
         <div className="assignment-row" key={v.id}>
@@ -711,14 +689,6 @@ function Groups({ data, refresh }: any) {
               <span>
                 {data.members.filter((m: any) => m.group_id === g.id).length}{" "}
                 learners
-              </span>
-              <span>
-                {
-                  data.grants.filter(
-                    (a: any) => a.group_id === g.id && a.status === "assigned",
-                  ).length
-                }{" "}
-                assignments
               </span>
             </div>
             <div className="table-actions">
@@ -1197,7 +1167,7 @@ function ContentDrive({ data, refresh }: any) {
       {confirm && (
         <Confirm
           title={`Delete “${confirm.name}”?`}
-          description="This permanently deletes this item, its access grants, progress, and unused stored files."
+          description="This permanently deletes this item, its progress, and unused stored files."
           onClose={() => setConfirm(null)}
           onConfirm={async () => {
             await del(`/admin/content/${confirm.id}`);
@@ -2150,7 +2120,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
         )}
         <Field
           label="Scheduled publish date (optional)"
-          hint="Content must also be set to Published. Parent items must be published for students to access it."
+          hint="Content must also be set to Published. Parent items must be published for students to view it."
         >
           <input
             type="datetime-local"

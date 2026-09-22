@@ -13,7 +13,6 @@ import {
   ArrowUpRight,
   Play,
   BookOpen,
-  Lock,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 export type Item = {
@@ -27,9 +26,6 @@ export type Item = {
   duration: number;
   tags: string[];
   notes: string;
-  accessible?: boolean;
-  locked?: boolean;
-  container?: boolean;
   created_at: number;
   public: number;
   publish_at: number | null;
@@ -713,9 +709,7 @@ export function CourseCard({
   progress?: any[];
   compact?: boolean;
 }) {
-  const children = descendants(item, items).filter(
-      (i) => i.kind === "video" && i.accessible,
-    ),
+  const children = descendants(item, items).filter((i) => i.kind === "video"),
     completed = children.filter((c) =>
       progress.some((p) => p.video_id === c.id && p.completed),
     ).length,
@@ -731,16 +725,7 @@ export function CourseCard({
       <div className="art-wrap">
         <CourseArt theme={item.thumbnail} />
         <span className="art-badge">
-          {item.locked ? (
-            <>
-              <Lock size={12} />
-              Not assigned
-            </>
-          ) : (
-            <>
-              <Play size={11} /> {children.length} lessons
-            </>
-          )}
+          <Play size={11} /> {children.length} lessons
         </span>
       </div>
       <div className="course-card-body">
@@ -758,21 +743,17 @@ export function CourseCard({
           </span>
           <span>Foundations</span>
         </div>
-        {!item.locked && (
-          <>
-            <div className="progress-track">
-              <i style={{ width: `${percent}%` }} />
-            </div>
-            <div className="progress-caption">
-              <span>
-                {completed} of {children.length} lessons complete
-              </span>
-              <b>{percent}%</b>
-            </div>
-          </>
-        )}
+        <div className="progress-track">
+          <i style={{ width: `${percent}%` }} />
+        </div>
+        <div className="progress-caption">
+          <span>
+            {completed} of {children.length} lessons complete
+          </span>
+          <b>{percent}%</b>
+        </div>
         <span className="card-link">
-          {item.locked ? "View subject" : "Continue learning"}
+          Continue learning
           <ArrowUpRight size={16} />
         </span>
       </div>

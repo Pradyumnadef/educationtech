@@ -301,8 +301,8 @@ function Overview({ data }: { data: any }) {
   const { user } = useAuth();
   const items: Item[] = data.content,
     progress = data.progress,
-    subjects = items.filter((i) => i.kind === "subject" && i.accessible),
-    videos = items.filter((i) => i.kind === "video" && i.accessible),
+    subjects = items.filter((i) => i.kind === "subject"),
+    videos = items.filter((i) => i.kind === "video"),
     completed = progress.filter((p: any) => p.completed).length;
   const continuing = [...progress]
     .filter((p: any) => !p.completed && p.position > 0)
@@ -356,7 +356,7 @@ function Overview({ data }: { data: any }) {
       <div className="stats-grid">
         <Stat
           icon={BookOpen}
-          label="Assigned subjects"
+          label="Subjects"
           value={subjects.length}
           note="A world to explore"
           color="green"
@@ -440,8 +440,8 @@ function Overview({ data }: { data: any }) {
               }
               description={
                 videos.length
-                  ? "You’ve completed every assigned lesson. Revisit a favorite or check back for something new."
-                  : "Your teacher will assign your first lessons soon."
+                  ? "You’ve completed every lesson. Revisit a favorite or check back for something new."
+                  : "Your teacher will publish the first lessons soon."
               }
             />
           )}
@@ -547,9 +547,8 @@ export function Stat({ icon: Icon, label, value, note, color = "green" }: any) {
 function Library({ type, data }: { type: string; data: any }) {
   const location = useLocation();
   const [search, setSearch] = useState(
-      new URLSearchParams(location.search).get("q") || "",
-    ),
-    [filter, setFilter] = useState("all");
+    new URLSearchParams(location.search).get("q") || "",
+  );
   useEffect(() => {
     setSearch(new URLSearchParams(location.search).get("q") || "");
   }, [location.search]);
@@ -559,11 +558,9 @@ function Library({ type, data }: { type: string; data: any }) {
   const filtered = items.filter(
     (i) =>
       i.kind === kind &&
-      (kind !== "video" || i.accessible) &&
       `${i.name} ${i.description}`
         .toLowerCase()
-        .includes(debounced.toLowerCase()) &&
-      (filter === "all" || (filter === "assigned" ? i.accessible : i.locked)),
+        .includes(debounced.toLowerCase()),
   );
   return (
     <>
@@ -579,23 +576,7 @@ function Library({ type, data }: { type: string; data: any }) {
         </div>
       </div>
       <div className="library-toolbar">
-        <div className="tabs">
-          {["all", "assigned", ...(kind === "video" ? [] : ["locked"])].map(
-            (t) => (
-              <button
-                key={t}
-                className={filter === t ? "active" : ""}
-                onClick={() => setFilter(t)}
-              >
-                {t === "all"
-                  ? "All " + type
-                  : t === "assigned"
-                    ? "Assigned to you"
-                    : "Not assigned"}
-              </button>
-            ),
-          )}
-        </div>
+        <h2>All {type}</h2>
         <label className="search-box">
           <Search size={17} />
           <input
@@ -908,19 +889,17 @@ function StudentDrive({
   const directChildren = current
     ? items.filter((item) => item.parent_id === current.id)
     : items.filter(
-        (item) =>
-          item.kind === "subject" && (item.accessible || item.container),
+        (item) => item.kind === "subject",
       );
   const searchText = search.trim().toLowerCase();
   const matches = (value: string) => value.toLowerCase().includes(searchText);
   const folders = directChildren.filter(
     (item) =>
       isContainer(item) &&
-      (item.accessible || item.container) &&
       matches(`${item.name} ${item.description}`),
   );
   const materials = directChildren.filter(
-    (item) => item.kind === "video" && item.accessible,
+    (item) => item.kind === "video",
   );
   const files = materials.flatMap((material) =>
     (material.assets || [])
@@ -1090,7 +1069,7 @@ function StudentDrive({
               ? "Nothing found"
               : current
                 ? "This folder is empty"
-                : "No learning materials assigned yet"
+                : "No learning materials yet"
           }
           description={
             search
@@ -1113,7 +1092,7 @@ function DocumentViewer({
 }) {
   const items: Item[] = data.content;
   const material = items.find(
-    (item) => item.id === contentId && item.kind === "video" && item.accessible,
+    (item) => item.id === contentId && item.kind === "video",
   );
   const asset = material?.assets?.find(
     (candidate: any) =>
@@ -1123,7 +1102,7 @@ function DocumentViewer({
     return (
       <Empty
         title="This document isn’t available"
-        description="Return to your learning materials or ask your teacher for access."
+        description="Return to your learning materials and choose another document."
       />
     );
   const backTo = material.parent_id
@@ -1203,15 +1182,6 @@ function SubjectDetail({ id, data }: { id: string; data: any }) {
         description="Return to My subjects to see the content shared with you."
       />
     );
-  if (node.locked)
-    return (
-      <Empty
-        title="This subject has not been assigned"
-        description="Ask your teacher for access to this subject."
-      >
-        <Lock size={24} />
-      </Empty>
-    );
   return (
     <StudentDrive data={data} basePath={`/app/subjects/${id}`} subjectId={id} />
   );
@@ -1249,7 +1219,7 @@ function Watch({
   const activeFolderId = activeItem?.parent_id || "";
   const related = items.filter(
       (i) =>
-        i.kind === "video" && i.accessible && i.parent_id === activeFolderId,
+        i.kind === "video" && i.parent_id === activeFolderId,
     ),
     index = related.findIndex((i) => i.id === videoId);
   const save = async (complete = false) => {
@@ -1356,7 +1326,7 @@ function Watch({
                 }}
                 onError={() =>
                   toast(
-                    "The video could not load. It may still be processing, or your access may have changed.",
+                    "The video could not load. It may still be processing or unavailable.",
                     "error",
                   )
                 }
@@ -1500,9 +1470,7 @@ function ShieldIcon() {
   return <Lock size={13} />;
 }
 function Progress({ data }: { data: any }) {
-  const subjects = data.content.filter(
-    (n: Item) => n.kind === "subject" && n.accessible,
-  );
+  const subjects = data.content.filter((n: Item) => n.kind === "subject");
   return (
     <>
       <div className="page-heading">
@@ -2137,8 +2105,8 @@ export function Profile({ admin = false }: { admin?: boolean }) {
               <>
                 <h3 className="mt">What sparks your curiosity?</h3>
                 <p className="muted">
-                  These are your interests. Your teacher manages your assigned
-                  content.
+                  These are your interests. You can explore every published
+                  subject.
                 </p>
                 <div className="interest-chips">
                   {subjects.map((s) => (
@@ -2361,7 +2329,7 @@ function Onboarding() {
         {step === 2 && (
           <Field
             label="Learning goals (optional)"
-            hint="Separate goals with commas. Interests do not grant access to lessons."
+            hint="Separate goals with commas. You can change these later."
           >
             <textarea
               rows={4}

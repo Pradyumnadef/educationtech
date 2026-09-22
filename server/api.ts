@@ -6,7 +6,7 @@ import {
   admin,
   safeUser,
   accessContext,
-  canAccess,
+  canViewContent,
   publicContent,
   audit,
   throttle,
@@ -202,41 +202,13 @@ api.get("/learning", async (req, res) => {
   const user = (req as any).user,
     ctx = await accessContext(user);
   const allowed = new Set(
-    ctx.nodes.filter((n: any) => canAccess(ctx, n.id)).map((n: any) => n.id),
+    ctx.nodes
+      .filter((n: any) => canViewContent(ctx, n.id))
+      .map((n: any) => n.id),
   );
-  const ancestors = new Set<string>();
-  for (const node of ctx.nodes.filter((n: any) => allowed.has(n.id))) {
-    let p = node.parent_id;
-    while (p && !ancestors.has(p)) {
-      ancestors.add(p);
-      p = ctx.nodes.find((n: any) => n.id === p)?.parent_id;
-    }
-  }
   const content = ctx.nodes
-    .filter(
-      (n: any) =>
-        allowed.has(n.id) ||
-        ancestors.has(n.id) ||
-        (n.public &&
-          n.kind === "subject" &&
-          n.status === "published" &&
-          (!n.publish_at || n.publish_at <= now())),
-    )
-    .map((n: any) =>
-      allowed.has(n.id)
-        ? { ...publicContent(n), accessible: true }
-        : {
-            id: n.id,
-            name: n.name,
-            kind: n.kind,
-            parent_id: n.parent_id,
-            thumbnail: n.thumbnail,
-            description: n.public ? n.description : "",
-            accessible: ancestors.has(n.id),
-            container: ancestors.has(n.id),
-            locked: !ancestors.has(n.id),
-          },
-    );
+    .filter((n: any) => allowed.has(n.id))
+    .map(publicContent);
   const assetRows = await query(
     `SELECT a.content_id,u.id,u.filename,u.mime,u.size,u.created_at,a.asset_type,a.sort_order,'asset' AS route_type
      FROM content_assets a JOIN uploads u ON u.id=a.upload_id AND u.state='ready'
@@ -267,7 +239,7 @@ api.get("/learning", async (req, res) => {
     assetsByContent.set(asset.content_id, assets);
   }
   for (const item of content) {
-    if (item.kind !== "video" || !item.accessible) continue;
+    if (item.kind !== "video") continue;
     const assets = assetsByContent.get(item.id) || [];
     item.assets = assets;
     item.video_count = assets.filter(
@@ -522,7 +494,7 @@ api.get("/search", async (req, res) => {
     .filter(
       (n: any) =>
         n.kind !== "topic" &&
-        canAccess(ctx, n.id) &&
+        canViewContent(ctx, n.id) &&
         `${n.name} ${n.description}`.toLowerCase().includes(q.toLowerCase()),
     )
     .slice(0, 40)
@@ -544,8 +516,8 @@ api.get("/search", async (req, res) => {
 });
 api.get("/videos/:id", async (req, res) => {
   const ctx = await accessContext((req as any).user);
-  if (!canAccess(ctx, req.params.id as string))
-    bad("This content has not been assigned to your account yet.", 403);
+  if (!canViewContent(ctx, req.params.id as string))
+    bad("This content is not available.", 403);
   const node = ctx.nodes.find((n: any) => n.id === req.params.id);
   if (node.kind !== "video") bad("Video not found.", 404);
   const assets = await query(
@@ -590,8 +562,8 @@ api.post("/progress/:id", async (req, res) => {
     })
     .parse(req.body);
   const ctx = await accessContext((req as any).user);
-  if (!canAccess(ctx, req.params.id as string))
-    bad("Your access to this lesson has changed.", 403);
+  if (!canViewContent(ctx, req.params.id as string))
+    bad("This lesson is not available.", 403);
   const node = ctx.nodes.find((n: any) => n.id === req.params.id);
   if (node.kind !== "video") bad("Video not found.", 404);
   const prev = await one(

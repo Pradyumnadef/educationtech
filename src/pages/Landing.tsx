@@ -30,15 +30,15 @@ import {
 const faqs = [
   [
     "How does learning on English Tech work?",
-    "Create your account, verify your email or phone, and tell us what interests you. Your teacher assigns the right subjects and lessons, which appear in your personal dashboard.",
+    "Create your account, verify your email or phone, and tell us what interests you. Every published subject and lesson appears in your learning space.",
   ],
   [
     "Can I learn at my own pace?",
     "Absolutely. Pause, replay, change playback speed, and pick up exactly where you left off. Your progress is saved as you learn.",
   ],
   [
-    "How do I get access to a subject?",
-    "Your teacher manages access to individual lessons, modules, or entire subjects. Selecting an interest helps them understand your goals, but does not automatically unlock a subject.",
+    "How do I find a subject?",
+    "Open My subjects or Learning materials to explore every subject, folder, lesson, and file your teacher has published.",
   ],
   [
     "Can I use English Tech on my phone?",

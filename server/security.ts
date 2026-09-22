@@ -171,6 +171,22 @@ export function canAccess(ctx: any, contentId: string) {
     return false;
   return matching.some((g: any) => g.status === "assigned");
 }
+export function canViewContent(ctx: any, contentId: string) {
+  if (ctx.user.status !== "active") return false;
+  if (ctx.user.role === "admin") return true;
+  let node = ctx.nodes.find((entry: any) => entry.id === contentId);
+  if (!node) return false;
+  let depth = 0;
+  while (node && depth++ < 64) {
+    if (
+      node.status !== "published" ||
+      (node.publish_at && Number(node.publish_at) > now())
+    )
+      return false;
+    node = ctx.nodes.find((entry: any) => entry.id === node.parent_id);
+  }
+  return depth < 64;
+}
 export function publicContent(node: any) {
   const { storage_key, caption_key, resource_key, ...safe } = node;
   return { ...safe, tags: JSON.parse(node.tags || "[]") };

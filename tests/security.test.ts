@@ -221,24 +221,24 @@ test("CSRF and unexpected request origins are rejected", async () => {
     403,
   );
 });
-test("student payloads contain only their progress and no storage secrets", async () => {
+test("student payloads include all published content without storage secrets", async () => {
   const r = await request("/learning", "GET", undefined, student);
   assert.equal(r.status, 200);
   assert.ok(r.data.progress.every((p: any) => p.user_id === "user-1"));
   assert.ok(r.data.content.some((c: any) => c.id === "algebra-1"));
   assert.equal(
     r.data.content.some((c: any) => c.id === "calculus-1"),
-    false,
+    true,
   );
   assert.equal(JSON.stringify(r.data).includes("storage_key"), false);
   assert.equal(
     (await request("/videos/calculus-1", "GET", undefined, student)).status,
-    403,
+    200,
   );
   assert.equal(
     (await request("/search?q=derivative", "GET", undefined, student)).data
       .length,
-    0,
+    1,
   );
 });
 test("profile input cannot escalate a role or overwrite another user", async () => {
@@ -259,7 +259,7 @@ test("profile input cannot escalate a role or overwrite another user", async () 
   assert.equal(r.data.id, "user-1");
   assert.equal(
     (await request("/videos/calculus-1", "GET", undefined, student)).status,
-    403,
+    200,
   );
 });
 test("invalid OTP fails; a valid OTP is single-use; resend has a cooldown", async () => {
@@ -341,7 +341,7 @@ test("invalid OTP fails; a valid OTP is single-use; resend has a cooldown", asyn
   );
   assert.equal(
     learn.data.content.some((entry: any) => entry.id === "organic"),
-    false,
+    true,
   );
 });
 test("OTP attempt limit cannot be bypassed with a correct code after five failures", async () => {
@@ -369,7 +369,7 @@ test("OTP attempt limit cannot be bypassed with a correct code after five failur
     400,
   );
 });
-test("individual revocation overrides a group grant and restoration works", async () => {
+test("legacy content grants do not hide published learning content", async () => {
   assert.equal(
     (await request("/videos/algebra-1", "GET", undefined, student)).status,
     200,
@@ -387,7 +387,7 @@ test("individual revocation overrides a group grant and restoration works", asyn
   );
   assert.equal(
     (await request("/videos/algebra-1", "GET", undefined, student)).status,
-    403,
+    200,
   );
   assert.equal(
     (
@@ -398,12 +398,12 @@ test("individual revocation overrides a group grant and restoration works", asyn
         student,
       )
     ).status,
-    403,
+    200,
   );
   assert.equal(
     (await request("/storage/media/algebra-1/video", "GET", undefined, student))
       .status,
-    403,
+    404,
   );
   await request(
     "/admin/assignments",
@@ -1245,7 +1245,7 @@ test("deactivation invalidates live sessions immediately", async () => {
     401,
   );
 });
-test("group membership adds inherited access and removing membership revokes it", async () => {
+test("student groups do not gate published learning content", async () => {
   const send = await request("/auth/otp/send", "POST", {
     identifier: "group-learner@test.local",
     purpose: "signup",
@@ -1264,7 +1264,7 @@ test("group membership adds inherited access and removing membership revokes it"
   assert.equal(group.status, 200);
   assert.equal(
     (await request("/videos/calculus-1", "GET", undefined, learner)).status,
-    403,
+    200,
   );
   await request(
     "/admin/assignments",
@@ -1290,7 +1290,7 @@ test("group membership adds inherited access and removing membership revokes it"
   );
   assert.equal(
     (await request("/videos/calculus-1", "GET", undefined, learner)).status,
-    403,
+    200,
   );
   await request(`/admin/groups/${group.data.id}`, "DELETE", undefined, teacher);
 });
