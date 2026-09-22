@@ -12,6 +12,10 @@ import {
   throttle,
 } from "./security.ts";
 import { cleanupUploadsIfUnreferenced } from "./storage.ts";
+import {
+  groupMatchesSubject,
+  groupSubjectCode,
+} from "../shared/group-subject.ts";
 export const api = Router();
 const uid = (req: any) => req.user.id;
 const text = z.string().trim().min(1).max(200);
@@ -285,7 +289,11 @@ api.get("/learning", async (req, res) => {
         session.status === "open" &&
         Number(session.ends_at) >= now() &&
         (!session.class_section_id ||
-          attendanceGroups.has(session.class_section_id)),
+          attendanceGroups.has(session.class_section_id)) &&
+        groupMatchesSubject(
+          session.class_section_name || "",
+          session.subject_name || "",
+        ),
     )
     .sort((a: any, b: any) => Number(a.starts_at) - Number(b.starts_at))
     .map((session: any) => {
@@ -344,6 +352,13 @@ api.post("/attendance/:id/check-in", async (req, res) => {
   ]);
   const attendance = attendanceRow ? JSON.parse(attendanceRow.value) : null;
   if (!attendance) bad("This attendance session was not found.", 404);
+  if (
+    !groupMatchesSubject(
+      attendance.class_section_name || "",
+      attendance.subject_name || "",
+    )
+  )
+    bad("This attendance session does not match the student group subject.", 403);
   if (attendance.class_section_id) {
     const membership = await one(
       "SELECT id FROM group_members WHERE group_id=? AND user_id=?",
@@ -596,7 +611,9 @@ api.post("/progress/:id", async (req, res) => {
 });
 api.get("/onboarding/options", async (_req, res) => {
   res.json({
-    groups: await query("SELECT id,name FROM student_groups ORDER BY name"),
+    groups: (
+      await query("SELECT id,name FROM student_groups ORDER BY name")
+    ).filter((group: any) => groupSubjectCode(group.name)),
   });
 });
 api.patch("/profile", async (req, res) => {
@@ -625,6 +642,8 @@ api.patch("/profile", async (req, res) => {
       b.groupId,
     ]);
     if (!group) bad("Choose an available student group.");
+    if (!groupSubjectCode(group.name))
+      bad("Choose Section-A or Section-B as your student group.");
     const duplicate = (await savedStudentProfiles()).find(
       (profile: any) =>
         profile.user_id !== user.id &&
@@ -843,6 +862,10 @@ api.post("/admin/attendance", async (req, res) => {
     [body.groupId],
   );
   if (!classSection) bad("Choose an available student group.");
+  if (!groupMatchesSubject(classSection.name, subject.name))
+    bad(
+      `${classSection.name} can only be used with ${groupSubjectCode(classSection.name)?.toUpperCase() || "its assigned"} subject.`,
+    );
   const session = {
     id: id(),
     teacher_id: uid(req),
@@ -1198,16 +1221,54 @@ api.put("/admin/groups/:id/members", async (req, res) => {
     ]))
   )
     bad("Student not found.");
-  if (b.member)
+  if (b.member) {
+    const group = await one("SELECT id,name FROM student_groups WHERE id=?", [
+      req.params.id,
+    ]);
+    if (!group || !groupSubjectCode(group.name))
+      bad("Students can only join Section-A or Section-B.");
+    await run("DELETE FROM group_members WHERE user_id=?", [b.studentId]);
     await run(
       "INSERT INTO group_members(id,group_id,user_id) VALUES (?,?,?) ON CONFLICT(group_id,user_id) DO NOTHING",
       [id(), req.params.id, b.studentId],
     );
-  else
+    const profileRow = await one("SELECT value FROM settings WHERE id=?", [
+      `student-profile:${b.studentId}`,
+    ]);
+    if (profileRow) {
+      const profile = JSON.parse(profileRow.value);
+      await run("UPDATE settings SET value=? WHERE id=?", [
+        JSON.stringify({
+          ...profile,
+          group_id: group.id,
+          group_name: group.name,
+          updated_at: now(),
+        }),
+        `student-profile:${b.studentId}`,
+      ]);
+    }
+  } else {
     await run("DELETE FROM group_members WHERE group_id=? AND user_id=?", [
       req.params.id,
       b.studentId,
     ]);
+    const profileRow = await one("SELECT value FROM settings WHERE id=?", [
+      `student-profile:${b.studentId}`,
+    ]);
+    if (profileRow) {
+      const profile = JSON.parse(profileRow.value);
+      if (profile.group_id === req.params.id)
+        await run("UPDATE settings SET value=? WHERE id=?", [
+          JSON.stringify({
+            ...profile,
+            group_id: "",
+            group_name: "",
+            updated_at: now(),
+          }),
+          `student-profile:${b.studentId}`,
+        ]);
+    }
+  }
   await audit(
     uid(req),
     "group.membership",

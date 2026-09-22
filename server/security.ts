@@ -6,6 +6,7 @@ import {
 } from "node:crypto";
 import type { Request, Response, NextFunction } from "express";
 import { one, run, insert, id, now, production, query } from "./db.ts";
+import { groupMatchesSubject } from "../shared/group-subject.ts";
 const SESSION_DURATION_MS = 1000 * 60 * 60 * 24 * 400;
 const SESSION_RENEW_WINDOW_MS = 1000 * 60 * 60 * 24 * 30;
 function sessionCookie(res: Response, token: string) {
@@ -143,6 +144,12 @@ export async function accessContext(user: any) {
       "SELECT * FROM access_grants WHERE user_id=? OR group_id IN (SELECT group_id FROM group_members WHERE user_id=?)",
       [user.id, user.id],
     ),
+    groups: await query(
+      `SELECT sg.id,sg.name FROM student_groups sg
+       JOIN group_members gm ON gm.group_id=sg.id
+       WHERE gm.user_id=?`,
+      [user.id],
+    ),
     nodes: await query("SELECT * FROM content"),
   };
 }
@@ -176,6 +183,7 @@ export function canViewContent(ctx: any, contentId: string) {
   if (ctx.user.role === "admin") return true;
   let node = ctx.nodes.find((entry: any) => entry.id === contentId);
   if (!node) return false;
+  let subject = node.kind === "subject" ? node : null;
   let depth = 0;
   while (node && depth++ < 64) {
     if (
@@ -183,9 +191,14 @@ export function canViewContent(ctx: any, contentId: string) {
       (node.publish_at && Number(node.publish_at) > now())
     )
       return false;
+    if (node.kind === "subject") subject = node;
     node = ctx.nodes.find((entry: any) => entry.id === node.parent_id);
   }
-  return depth < 64;
+  return (
+    depth < 64 &&
+    !!subject &&
+    ctx.groups.some((group: any) => groupMatchesSubject(group.name, subject.name))
+  );
 }
 export function publicContent(node: any) {
   const { storage_key, caption_key, resource_key, ...safe } = node;

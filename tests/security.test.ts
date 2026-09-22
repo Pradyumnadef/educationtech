@@ -221,24 +221,24 @@ test("CSRF and unexpected request origins are rejected", async () => {
     403,
   );
 });
-test("student payloads include all published content without storage secrets", async () => {
+test("student payloads include only the subject mapped to their section", async () => {
   const r = await request("/learning", "GET", undefined, student);
   assert.equal(r.status, 200);
   assert.ok(r.data.progress.every((p: any) => p.user_id === "user-1"));
-  assert.ok(r.data.content.some((c: any) => c.id === "algebra-1"));
+  assert.ok(r.data.content.some((c: any) => c.id === "motion-1"));
   assert.equal(
     r.data.content.some((c: any) => c.id === "calculus-1"),
-    true,
+    false,
   );
   assert.equal(JSON.stringify(r.data).includes("storage_key"), false);
   assert.equal(
     (await request("/videos/calculus-1", "GET", undefined, student)).status,
-    200,
+    403,
   );
   assert.equal(
     (await request("/search?q=derivative", "GET", undefined, student)).data
       .length,
-    1,
+    0,
   );
 });
 test("profile input cannot escalate a role or overwrite another user", async () => {
@@ -259,7 +259,7 @@ test("profile input cannot escalate a role or overwrite another user", async () 
   assert.equal(r.data.id, "user-1");
   assert.equal(
     (await request("/videos/calculus-1", "GET", undefined, student)).status,
-    200,
+    403,
   );
 });
 test("invalid OTP fails; a valid OTP is single-use; resend has a cooldown", async () => {
@@ -303,6 +303,16 @@ test("invalid OTP fails; a valid OTP is single-use; resend has a cooldown", asyn
     400,
   );
   const c = { cookie: verified.cookie, csrf: verified.data.csrf };
+  const onboardingOptions = await request(
+    "/onboarding/options",
+    "GET",
+    undefined,
+    c,
+  );
+  assert.deepEqual(
+    onboardingOptions.data.groups.map((group: any) => group.name),
+    ["Section-A"],
+  );
   assert.equal(
     (
       await request(
@@ -334,10 +344,10 @@ test("invalid OTP fails; a valid OTP is single-use; resend has a cooldown", asyn
     (entry: any) => entry.email === "new-learner@test.local",
   );
   assert.equal(registeredStudent.roll_number, "NEW-001");
-  assert.equal(registeredStudent.group_name, "Curious minds · Batch A");
+  assert.equal(registeredStudent.group_name, "Section-A");
   const learn = await request("/learning", "GET", undefined, c);
   assert.ok(
-    learn.data.content.some((entry: any) => entry.id === "english"),
+    learn.data.content.some((entry: any) => entry.id === "uhv"),
   );
   assert.equal(
     learn.data.content.some((entry: any) => entry.id === "organic"),
@@ -369,9 +379,9 @@ test("OTP attempt limit cannot be bypassed with a correct code after five failur
     400,
   );
 });
-test("legacy content grants do not hide published learning content", async () => {
+test("legacy content grants do not override the mandatory section subject", async () => {
   assert.equal(
-    (await request("/videos/algebra-1", "GET", undefined, student)).status,
+    (await request("/videos/motion-1", "GET", undefined, student)).status,
     200,
   );
   await request(
@@ -380,19 +390,19 @@ test("legacy content grants do not hide published learning content", async () =>
     {
       targetType: "student",
       targetId: "user-1",
-      contentIds: ["algebra-1"],
+      contentIds: ["motion-1"],
       status: "revoked",
     },
     teacher,
   );
   assert.equal(
-    (await request("/videos/algebra-1", "GET", undefined, student)).status,
+    (await request("/videos/motion-1", "GET", undefined, student)).status,
     200,
   );
   assert.equal(
     (
       await request(
-        "/progress/algebra-1",
+        "/progress/motion-1",
         "POST",
         { position: 1, completed: true },
         student,
@@ -401,7 +411,7 @@ test("legacy content grants do not hide published learning content", async () =>
     200,
   );
   assert.equal(
-    (await request("/storage/media/algebra-1/video", "GET", undefined, student))
+    (await request("/storage/media/motion-1/video", "GET", undefined, student))
       .status,
     404,
   );
@@ -411,13 +421,13 @@ test("legacy content grants do not hide published learning content", async () =>
     {
       targetType: "student",
       targetId: "user-1",
-      contentIds: ["algebra-1"],
+      contentIds: ["motion-1"],
       status: "assigned",
     },
     teacher,
   );
   assert.equal(
-    (await request("/videos/algebra-1", "GET", undefined, student)).status,
+    (await request("/videos/motion-1", "GET", undefined, student)).status,
     200,
   );
 });
@@ -624,7 +634,7 @@ test("nested content folders inherit access, reject cycles, and hide drafts", as
     {
       kind: "subject",
       parent_id: null,
-      name: "Test subject",
+      name: "UHV Test subject",
       status: "published",
     },
     teacher,
@@ -702,7 +712,7 @@ test("nested content folders inherit access, reject cycles, and hide drafts", as
   await request(
     `/admin/content/${s.data.id}`,
     "PUT",
-    { kind: "subject", parent_id: null, name: "Test subject", status: "draft" },
+    { kind: "subject", parent_id: null, name: "UHV Test subject", status: "draft" },
     teacher,
   );
   assert.equal(
@@ -721,11 +731,11 @@ test("nested content folders inherit access, reject cycles, and hide drafts", as
   );
 });
 test("attendance enforces time, GPS radius, accuracy, ownership, and one check-in", async () => {
-  const created = await request(
+  const mismatched = await request(
     "/admin/attendance",
     "POST",
     {
-      title: "Secure attendance",
+      title: "Wrong section subject",
       subjectId: "english",
       groupId: "group-1",
       locationName: "Test campus",
@@ -737,9 +747,26 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
     },
     teacher,
   );
+  assert.equal(mismatched.status, 400);
+  const created = await request(
+    "/admin/attendance",
+    "POST",
+    {
+      title: "Secure attendance",
+      subjectId: "uhv",
+      groupId: "group-1",
+      locationName: "Test campus",
+      latitude: 20,
+      longitude: 85,
+      radiusM: 50,
+      startsAt: Date.now() - 60000,
+      endsAt: Date.now() + 600000,
+    },
+    teacher,
+  );
   assert.equal(created.status, 200, JSON.stringify(created.data));
-  assert.equal(created.data.subject_name, "English");
-  assert.equal(created.data.class_section_name, "Curious minds · Batch A");
+  assert.equal(created.data.subject_name, "UHV (Universal Human Values)");
+  assert.equal(created.data.class_section_name, "Section-A");
   const sessionId = created.data.id;
   const outsiderChallenge = await request("/auth/otp/send", "POST", {
     identifier: "jamie@lumio.local",
@@ -870,7 +897,7 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
     "POST",
     {
       title: "Expired attendance",
-      subjectId: "english",
+      subjectId: "uhv",
       groupId: "group-1",
       locationName: "Test campus",
       latitude: 20,
@@ -907,7 +934,7 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
         "POST",
         {
           title: "Not allowed",
-          subjectId: "english",
+          subjectId: "uhv",
           groupId: "group-1",
           locationName: "Campus",
           latitude: 20,
@@ -935,25 +962,25 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
 });
 test("progress is owned by session and watch time is bounded by real elapsed time", async () => {
   const r = await request(
-    "/progress/python-4",
+    "/progress/motion-4",
     "POST",
     { position: 5, seconds: 20, user_id: "user-2" },
     student,
   );
   assert.equal(r.status, 200);
   const d = (await request("/learning", "GET", undefined, student)).data;
-  const p = d.progress.find((p: any) => p.video_id === "python-4");
+  const p = d.progress.find((p: any) => p.video_id === "motion-4");
   assert.equal(p.user_id, "user-1");
   assert.equal(p.watched_seconds, 0);
   await request(
-    "/progress/python-4",
+    "/progress/motion-4",
     "POST",
     { position: 10, seconds: 20, completed: true },
     student,
   );
   const next = (
     await request("/learning", "GET", undefined, student)
-  ).data.progress.find((p: any) => p.video_id === "python-4");
+  ).data.progress.find((p: any) => p.video_id === "motion-4");
   assert.ok(next.watched_seconds < 3);
   assert.equal(next.completed, 1);
 });
@@ -1055,12 +1082,12 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
   });
   assert.equal(documentUpload.status, 200);
   const v = (
-    await request("/admin/content/python-4", "GET", undefined, teacher)
+    await request("/admin/content/motion-4", "GET", undefined, teacher)
   ).data;
   assert.equal(
     (
       await request(
-        "/admin/content/python-4",
+        "/admin/content/motion-4",
         "PUT",
         {
           ...v,
@@ -1074,7 +1101,7 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
     200,
   );
   const saved = (
-    await request("/admin/content/python-4", "GET", undefined, teacher)
+    await request("/admin/content/motion-4", "GET", undefined, teacher)
   ).data;
   assert.equal(saved.uploaded_files.storage_key.id, prep.data.id);
   assert.equal(saved.uploaded_files.storage_key.filename, "format-fixture.mp4");
@@ -1085,7 +1112,7 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
   ]);
   const overviewMaterial = (
     await request("/admin/overview", "GET", undefined, teacher)
-  ).data.content.find((item: any) => item.id === "python-4");
+  ).data.content.find((item: any) => item.id === "motion-4");
   assert.equal(overviewMaterial.video_count, 1);
   assert.equal(overviewMaterial.file_count, 1);
   assert.deepEqual(
@@ -1094,7 +1121,7 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
   );
   const studentMaterial = (
     await request("/learning", "GET", undefined, student)
-  ).data.content.find((item: any) => item.id === "python-4");
+  ).data.content.find((item: any) => item.id === "motion-4");
   assert.equal(studentMaterial.video_count, 1);
   assert.equal(studentMaterial.file_count, 1);
   assert.deepEqual(
@@ -1103,7 +1130,7 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
   );
   assert.ok(
     studentMaterial.assets.every((item: any) =>
-      item.url.startsWith("/api/storage/media/python-4/"),
+      item.url.startsWith("/api/storage/media/motion-4/"),
     ),
   );
   assert.equal("storage_key" in studentMaterial.assets[0], false);
@@ -1133,13 +1160,13 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
     ).status,
     403,
   );
-  const r = await fetch(origin + "/api/storage/media/python-4/video", {
+  const r = await fetch(origin + "/api/storage/media/motion-4/video", {
     headers: { Cookie: student.cookie, Range: "bytes=0-15" },
   });
   assert.equal(r.status, 206);
   assert.equal(r.headers.get("content-range"), "bytes 0-15/64");
   assert.equal((await r.arrayBuffer()).byteLength, 16);
-  const lesson = (await request("/videos/python-4", "GET", undefined, student))
+  const lesson = (await request("/videos/motion-4", "GET", undefined, student))
     .data;
   assert.equal(lesson.videos.length, 1);
   assert.equal(lesson.files.length, 1);
@@ -1170,11 +1197,11 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
     ).status,
     200,
   );
-  assert.equal((await request("/storage/media/python-4/video")).status, 401);
+  assert.equal((await request("/storage/media/motion-4/video")).status, 401);
   assert.equal(
     (
       await request(
-        "/admin/content/python-4",
+        "/admin/content/motion-4",
         "PUT",
         {
           ...saved,
@@ -1245,7 +1272,7 @@ test("deactivation invalidates live sessions immediately", async () => {
     401,
   );
 });
-test("student groups do not gate published learning content", async () => {
+test("Section-B grants ETW and blocks UHV", async () => {
   const send = await request("/auth/otp/send", "POST", {
     identifier: "group-learner@test.local",
     purpose: "signup",
@@ -1258,13 +1285,13 @@ test("student groups do not gate published learning content", async () => {
   const group = await request(
     "/admin/groups",
     "POST",
-    { name: "Regression class", description: "A bounded test group." },
+    { name: "Section-B", description: "ETW students." },
     teacher,
   );
   assert.equal(group.status, 200);
   assert.equal(
     (await request("/videos/calculus-1", "GET", undefined, learner)).status,
-    200,
+    403,
   );
   await request(
     "/admin/assignments",
@@ -1282,6 +1309,10 @@ test("student groups do not gate published learning content", async () => {
     (await request("/videos/calculus-1", "GET", undefined, learner)).status,
     200,
   );
+  assert.equal(
+    (await request("/videos/motion-1", "GET", undefined, learner)).status,
+    403,
+  );
   await request(
     `/admin/groups/${group.data.id}/members`,
     "PUT",
@@ -1290,7 +1321,7 @@ test("student groups do not gate published learning content", async () => {
   );
   assert.equal(
     (await request("/videos/calculus-1", "GET", undefined, learner)).status,
-    200,
+    403,
   );
   await request(`/admin/groups/${group.data.id}`, "DELETE", undefined, teacher);
 });

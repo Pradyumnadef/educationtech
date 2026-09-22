@@ -71,6 +71,12 @@ import {
   sortDriveEntries,
 } from "../lib";
 import { ActivityChart, Stat, Profile } from "./Student";
+import {
+  assignedSubjectLabel,
+  groupMatchesSubject,
+  groupSubjectCode,
+  subjectCode,
+} from "../../shared/group-subject";
 export default function Admin() {
   const { data, error, loading, refresh } = useData("/admin/overview");
   const location = useLocation();
@@ -686,6 +692,9 @@ function Groups({ data, refresh }: any) {
             <h2>{g.name}</h2>
             <p>{g.description || "A space for shared curiosity."}</p>
             <div className="group-counts">
+              {assignedSubjectLabel(g.name) && (
+                <span>{assignedSubjectLabel(g.name)} subject</span>
+              )}
               <span>
                 {data.members.filter((m: any) => m.group_id === g.id).length}{" "}
                 learners
@@ -2205,8 +2214,12 @@ function UploadedFile({ file, label, onRemove }: any) {
   );
 }
 function Attendance({ data, refresh }: any) {
-  const subjects = data.content.filter((item: Item) => item.kind === "subject");
-  const studentGroups = data.groups || [];
+  const subjects = data.content.filter(
+    (item: Item) => item.kind === "subject" && subjectCode(item.name),
+  );
+  const studentGroups = (data.groups || []).filter((group: any) =>
+    groupSubjectCode(group.name),
+  );
   const synergyCampus = {
     locationName: "Synergy Institute of Technology, Bhubaneswar",
     latitude: "20.3473125",
@@ -2220,8 +2233,11 @@ function Attendance({ data, refresh }: any) {
   };
   const emptyForm = () => ({
     title: "Class attendance",
-    subjectId: subjects[0]?.id || "",
     groupId: studentGroups[0]?.id || "",
+    subjectId:
+      subjects.find((subject: Item) =>
+        groupMatchesSubject(studentGroups[0]?.name || "", subject.name),
+      )?.id || "",
     ...synergyCampus,
     radiusM: 25,
     startsAt: localDateTime(Date.now()),
@@ -2234,9 +2250,20 @@ function Attendance({ data, refresh }: any) {
   const [selected, setSelected] = useState<any>(null);
   const [removing, setRemoving] = useState<any>(null);
   const toast = useToast();
+  const selectedGroup = studentGroups.find(
+    (group: any) => group.id === form.groupId,
+  );
+  const matchingSubjects = subjects.filter((subject: Item) =>
+    groupMatchesSubject(selectedGroup?.name || "", subject.name),
+  );
   const sessions = (data.attendance || []).filter(
     (session: any) =>
-      session.status === "open" && Date.now() <= Number(session.ends_at),
+      session.status === "open" &&
+      Date.now() <= Number(session.ends_at) &&
+      groupMatchesSubject(
+        session.class_section_name || "",
+        session.subject_name || "",
+      ),
   );
   const captureLocation = () => {
     if (!navigator.geolocation)
@@ -2391,11 +2418,22 @@ function Attendance({ data, refresh }: any) {
               <Field label="Subject">
                 <select required value={form.subjectId} onChange={(event) => setForm({ ...form, subjectId: event.target.value })}>
                   <option value="" disabled>Choose subject</option>
-                  {subjects.map((subject: Item) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}
+                  {matchingSubjects.map((subject: Item) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}
                 </select>
               </Field>
               <Field label="Student group">
-                <select required value={form.groupId} onChange={(event) => setForm({ ...form, groupId: event.target.value })}>
+                <select
+                  required
+                  value={form.groupId}
+                  onChange={(event) => {
+                    const groupId = event.target.value;
+                    const group = studentGroups.find((entry: any) => entry.id === groupId);
+                    const subject = subjects.find((entry: Item) =>
+                      groupMatchesSubject(group?.name || "", entry.name),
+                    );
+                    setForm({ ...form, groupId, subjectId: subject?.id || "" });
+                  }}
+                >
                   <option value="" disabled>Choose student group</option>
                   {studentGroups.map((group: any) => <option value={group.id} key={group.id}>{group.name}</option>)}
                 </select>
@@ -2620,7 +2658,11 @@ function downloadAttendanceExcel(rows: AttendanceExportRow[], label: string) {
 function AttendanceAnalysis({ data, refresh }: any) {
   const archivedSessions = (data.attendance || []).filter(
     (session: any) =>
-      session.status === "closed" || Date.now() > Number(session.ends_at),
+      (session.status === "closed" || Date.now() > Number(session.ends_at)) &&
+      groupMatchesSubject(
+        session.class_section_name || "",
+        session.subject_name || "",
+      ),
   );
   const subjectOptions = Array.from(
     new Map(

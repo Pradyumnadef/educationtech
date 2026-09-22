@@ -52,7 +52,12 @@ export async function seed() {
     });
   }
   const subjects = [
-    ["english", "English", "Find your voice. Share your ideas.", "english"],
+    [
+      "english",
+      "ETW (English for Technical Writing)",
+      "Find your voice. Share your ideas.",
+      "english",
+    ],
     [
       "uhv",
       "UHV (Universal Human Values)",
@@ -182,7 +187,7 @@ export async function seed() {
       });
   await insert("student_groups", {
     id: "group-1",
-    name: "Curious minds · Batch A",
+    name: "Section-A",
     description: "Our weekday foundation learners.",
     created_at: t,
   });

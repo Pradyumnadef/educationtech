@@ -64,6 +64,7 @@ import {
   contentFolderSize,
   sortDriveEntries,
 } from "../lib";
+import { assignedSubjectLabel } from "../../shared/group-subject";
 export function ActivityChart({ events = [] }: { events: any[] }) {
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
@@ -2253,7 +2254,7 @@ function Onboarding() {
           {
             [
               "Tell us your name, roll number, and student group to prepare your learning space.",
-              "Pick the subjects you’d love to explore. You can always change these later.",
+              "Your subject is automatically selected from your student group.",
               "Are there particular learning goals you’d love to achieve?",
               "Your teacher will bring the right lessons into your space. Until then, make yourself at home.",
             ][step]
@@ -2284,7 +2285,19 @@ function Onboarding() {
             <Field label="Student group">
               <select
                 value={groupId}
-                onChange={(e) => setGroupId(e.target.value)}
+                onChange={(e) => {
+                  const nextGroupId = e.target.value;
+                  const group = groups.find((entry) => entry.id === nextGroupId);
+                  const assigned = assignedSubjectLabel(group?.name || "");
+                  setGroupId(nextGroupId);
+                  setSelected(
+                    assigned === "UHV"
+                      ? ["UHV (Universal Human Values)"]
+                      : assigned === "ETW"
+                        ? ["ETW (English for Technical Writing)"]
+                        : [],
+                  );
+                }}
                 disabled={onboardingLoading || !groups.length}
                 required
               >
@@ -2295,6 +2308,11 @@ function Onboarding() {
                   <option value={group.id} key={group.id}>{group.name}</option>
                 ))}
               </select>
+              {groupId && (
+                <small>
+                  {groups.find((group) => group.id === groupId)?.name} includes {assignedSubjectLabel(groups.find((group) => group.id === groupId)?.name || "")}.
+                </small>
+              )}
               {onboardingError && <small className="danger-text">Could not load student groups. Try refreshing this page.</small>}
               {!onboardingLoading && !onboardingError && !groups.length && (
                 <small className="danger-text">No student group is available yet. Ask your teacher to create one.</small>
@@ -2304,23 +2322,17 @@ function Onboarding() {
         )}
         {step === 1 && (
           <div className="onboarding-subjects">
-            {[
-              ["English", "english"],
-              ["UHV (Universal Human Values)", "biology"],
-            ].map(([s, t]) => (
+            {selected.map((s) => (
               <button
-                className={selected.includes(s) ? "selected" : ""}
-                onClick={() =>
-                  setSelected((v) =>
-                    v.includes(s) ? v.filter((x) => x !== s) : [...v, s],
-                  )
-                }
+                type="button"
+                className="selected"
+                disabled
                 key={s}
               >
-                <CourseArt theme={t} />
+                <CourseArt theme={s.startsWith("UHV") ? "biology" : "english"} />
                 <span>
                   {s}
-                  {selected.includes(s) ? <Check size={17} /> : <span>+</span>}
+                  <Check size={17} />
                 </span>
               </button>
             ))}
