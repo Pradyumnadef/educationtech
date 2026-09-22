@@ -293,7 +293,11 @@ api.get("/learning", async (req, res) => {
     (record: any) => record.user_id === user.id,
   );
   const attendance = (await savedAttendanceSessions())
-    .filter((session: any) => Number(session.ends_at) > now() - 86400000)
+    .filter(
+      (session: any) =>
+        session.status === "open" &&
+        Number(session.ends_at) > now() - 86400000,
+    )
     .sort((a: any, b: any) => Number(a.starts_at) - Number(b.starts_at))
     .map((session: any) => {
       const record = studentAttendanceRecords.find(

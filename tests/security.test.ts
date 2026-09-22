@@ -764,6 +764,42 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
   assert.equal(
     (
       await request(
+        `/admin/attendance/${sessionId}`,
+        "PATCH",
+        { status: "closed" },
+        teacher,
+      )
+    ).status,
+    200,
+  );
+  const hiddenAttendance = await request("/learning", "GET", undefined, student);
+  assert.equal(
+    hiddenAttendance.data.attendance.some(
+      (entry: any) => entry.id === sessionId,
+    ),
+    false,
+  );
+  assert.equal(
+    (
+      await request(
+        `/admin/attendance/${sessionId}`,
+        "PATCH",
+        { status: "open" },
+        teacher,
+      )
+    ).status,
+    200,
+  );
+  const reopenedAttendance = await request("/learning", "GET", undefined, student);
+  assert.equal(
+    reopenedAttendance.data.attendance.some(
+      (entry: any) => entry.id === sessionId,
+    ),
+    true,
+  );
+  assert.equal(
+    (
+      await request(
         "/admin/attendance",
         "POST",
         {
