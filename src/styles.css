@@ -5440,6 +5440,9 @@ td b {
 .landing .step > span {
   color: #5c7044;
 }
+.landing .bottom-cta .eyebrow {
+  color: #b6c293;
+}
 
 @media (max-width: 760px) {
   .landing .eyebrow,
