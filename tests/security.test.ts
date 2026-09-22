@@ -698,7 +698,7 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
     {
       title: "Secure attendance",
       subjectId: "english",
-      classSectionId: "group-1",
+      classSection: "Section A",
       locationName: "Test campus",
       latitude: 20,
       longitude: 85,
@@ -710,7 +710,7 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
   );
   assert.equal(created.status, 200, JSON.stringify(created.data));
   assert.equal(created.data.subject_name, "English");
-  assert.equal(created.data.class_section_name, "Curious minds · Batch A");
+  assert.equal(created.data.class_section_name, "Section A");
   const sessionId = created.data.id;
   const outsiderChallenge = await request("/auth/otp/send", "POST", {
     identifier: "jamie@lumio.local",
@@ -734,18 +734,7 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
     outsiderLearning.data.attendance.some(
       (session: any) => session.id === sessionId,
     ),
-    false,
-  );
-  assert.equal(
-    (
-      await request(
-        `/attendance/${sessionId}/check-in`,
-        "POST",
-        { latitude: 20, longitude: 85, accuracyM: 5 },
-        outsider,
-      )
-    ).status,
-    403,
+    true,
   );
   assert.equal(
     (
@@ -842,7 +831,7 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
     {
       title: "Expired attendance",
       subjectId: "english",
-      classSectionId: "group-1",
+      classSection: "Section A",
       locationName: "Test campus",
       latitude: 20,
       longitude: 85,
@@ -879,7 +868,7 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
         {
           title: "Not allowed",
           subjectId: "english",
-          classSectionId: "group-1",
+          classSection: "Section A",
           locationName: "Campus",
           latitude: 20,
           longitude: 85,

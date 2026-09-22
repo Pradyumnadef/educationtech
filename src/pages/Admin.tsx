@@ -2230,7 +2230,14 @@ function UploadedFile({ file, label, onRemove }: any) {
 }
 function Attendance({ data, refresh }: any) {
   const subjects = data.content.filter((item: Item) => item.kind === "subject");
-  const classSections = data.groups || [];
+  const classSectionSuggestions = Array.from(
+    new Set([
+      ...(data.groups || []).map((section: any) => section.name),
+      ...(data.attendance || [])
+        .map((session: any) => session.class_section_name)
+        .filter(Boolean),
+    ]),
+  ) as string[];
   const synergyCampus = {
     locationName: "Synergy Institute of Technology, Bhubaneswar",
     latitude: "20.3473125",
@@ -2245,7 +2252,7 @@ function Attendance({ data, refresh }: any) {
   const emptyForm = () => ({
     title: "Class attendance",
     subjectId: subjects[0]?.id || "",
-    classSectionId: classSections[0]?.id || "",
+    classSection: classSectionSuggestions[0] || "",
     ...synergyCampus,
     radiusM: 25,
     startsAt: localDateTime(Date.now()),
@@ -2293,7 +2300,7 @@ function Attendance({ data, refresh }: any) {
         description="Open a timed attendance session and allow check-in only within your chosen campus radius."
       >
         <Button
-          disabled={!subjects.length || !classSections.length}
+          disabled={!subjects.length}
           onClick={() => setCreating(true)}
         >
           <Plus size={16} /> New attendance
@@ -2368,12 +2375,10 @@ function Attendance({ data, refresh }: any) {
           description={
             !subjects.length
               ? "Create a subject before opening attendance."
-              : !classSections.length
-                ? "Create a student group to use as a class section before opening attendance."
-                : "Choose a subject and class section, then set the attendance location and time."
+              : "Choose a subject and class section, then set the attendance location and time."
           }
         >
-          <Button disabled={!subjects.length || !classSections.length} onClick={() => setCreating(true)}><Plus size={16} /> New attendance</Button>
+          <Button disabled={!subjects.length} onClick={() => setCreating(true)}><Plus size={16} /> New attendance</Button>
         </Empty>
       )}
       {creating && (
@@ -2419,10 +2424,18 @@ function Attendance({ data, refresh }: any) {
                 </select>
               </Field>
               <Field label="Class section">
-                <select required value={form.classSectionId} onChange={(event) => setForm({ ...form, classSectionId: event.target.value })}>
-                  <option value="" disabled>Choose class section</option>
-                  {classSections.map((section: any) => <option value={section.id} key={section.id}>{section.name}</option>)}
-                </select>
+                <input
+                  required
+                  maxLength={200}
+                  list="attendance-class-sections"
+                  value={form.classSection}
+                  onChange={(event) => setForm({ ...form, classSection: event.target.value })}
+                  placeholder="For example, Section A"
+                />
+                <datalist id="attendance-class-sections">
+                  {classSectionSuggestions.map((section) => <option value={section} key={section} />)}
+                </datalist>
+                <small>Enter a section name, or choose a previous suggestion.</small>
               </Field>
             </div>
             <div className="attendance-location-capture">
@@ -2519,6 +2532,12 @@ type AttendanceExportRow = {
   distance: string;
   accuracy: string;
 };
+
+function hasAttendanceRoster(session: any, data: any) {
+  return (data.groups || []).some(
+    (section: any) => section.id === session.class_section_id,
+  );
+}
 
 function attendanceRows(session: any, data: any): AttendanceExportRow[] {
   const memberIds = new Set(
@@ -2687,6 +2706,10 @@ function AttendanceAnalysis({ data, refresh }: any) {
     attendanceRows(session, data),
   );
   const present = rows.filter((row) => row.status === "Present").length;
+  const ratedRows: AttendanceExportRow[] = sessions
+    .filter((session: any) => hasAttendanceRoster(session, data))
+    .flatMap((session: any) => attendanceRows(session, data));
+  const ratedPresent = ratedRows.filter((row) => row.status === "Present").length;
   const periodLabel =
     period === "week" ? "Weekly" : period === "month" ? "Monthly" : "Quarterly";
   const subjectName =
@@ -2778,7 +2801,7 @@ function AttendanceAnalysis({ data, refresh }: any) {
             <Stat
               icon={BarChart3}
               label="Attendance rate"
-              value={rows.length ? `${Math.round((present / rows.length) * 100)}%` : "—"}
+              value={ratedRows.length ? `${Math.round((ratedPresent / ratedRows.length) * 100)}%` : "—"}
             />
           </div>
           <section className="panel attendance-analysis-table">
@@ -2798,13 +2821,14 @@ function AttendanceAnalysis({ data, refresh }: any) {
                     {sessions.map((session: any) => {
                       const sessionRows = attendanceRows(session, data);
                       const sessionPresent = sessionRows.filter((row) => row.status === "Present").length;
+                      const hasRoster = hasAttendanceRoster(session, data);
                       return (
                         <tr key={session.id}>
                           <td>{new Date(session.starts_at).toLocaleString()}</td>
                           <td><b>{session.title}</b><small>{session.location_name}</small></td>
                           <td>{sessionPresent}</td>
-                          <td>{sessionRows.length}</td>
-                          <td>{sessionRows.length ? `${Math.round((sessionPresent / sessionRows.length) * 100)}%` : "—"}</td>
+                          <td>{hasRoster ? sessionRows.length : "—"}</td>
+                          <td>{hasRoster && sessionRows.length ? `${Math.round((sessionPresent / sessionRows.length) * 100)}%` : "—"}</td>
                           <td>
                             <div className="table-actions">
                               <Button variant="secondary small" onClick={() => setSelected(session)}><Eye size={14} /> Preview</Button>
