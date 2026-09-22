@@ -102,7 +102,7 @@ export default function PdfViewer({
 }) {
   const viewerRef = useRef<HTMLElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [document, setDocument] = useState<any>(null);
+  const [pdfDocument, setPdfDocument] = useState<any>(null);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(0);
   const [zoom, setZoom] = useState(1);
@@ -146,7 +146,7 @@ export default function PdfViewer({
         task = pdfjs.getDocument({ data: await response.arrayBuffer() });
         const loaded = await task.promise;
         if (cancelled) return loaded.destroy();
-        setDocument(loaded);
+        setPdfDocument(loaded);
         setPages(loaded.numPages);
         setPage(1);
       } catch (reason: any) {
@@ -277,11 +277,11 @@ export default function PdfViewer({
             {error}
           </div>
         ) : (
-          document &&
+          pdfDocument &&
           Array.from({ length: pages }, (_, index) => (
             <PdfPage
               key={index + 1}
-              document={document}
+              document={pdfDocument}
               pageNumber={index + 1}
               width={width}
               zoom={zoom}
