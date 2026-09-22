@@ -49,6 +49,7 @@ const adminNav = [
   ["library", "Content drive", FileText],
   ["assignments", "Assignments", ClipboardList],
   ["attendance", "Attendance", MapPin],
+  ["attendance-analysis", "Attendance analysis", ChartNoAxesCombined],
   ["analytics", "Analytics", ChartNoAxesCombined],
   ["announcements", "Announcements", Megaphone],
   ["settings", "Settings", Settings],

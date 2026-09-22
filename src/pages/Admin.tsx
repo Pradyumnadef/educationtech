@@ -91,6 +91,8 @@ export default function Admin() {
     body = <Coursework data={data} refresh={refresh} />;
   else if (route === "attendance")
     body = <Attendance data={data} refresh={refresh} />;
+  else if (route === "attendance-analysis")
+    body = <AttendanceAnalysis data={data} refresh={refresh} />;
   else if (route === "announcements")
     body = <Announcements data={data} refresh={refresh} />;
   else if (route === "analytics") body = <Analytics data={data} />;
@@ -2227,6 +2229,8 @@ function UploadedFile({ file, label, onRemove }: any) {
   );
 }
 function Attendance({ data, refresh }: any) {
+  const subjects = data.content.filter((item: Item) => item.kind === "subject");
+  const classSections = data.groups || [];
   const synergyCampus = {
     locationName: "Synergy Institute of Technology, Bhubaneswar",
     latitude: "20.3473125",
@@ -2240,6 +2244,8 @@ function Attendance({ data, refresh }: any) {
   };
   const emptyForm = () => ({
     title: "Class attendance",
+    subjectId: subjects[0]?.id || "",
+    classSectionId: classSections[0]?.id || "",
     ...synergyCampus,
     radiusM: 25,
     startsAt: localDateTime(Date.now()),
@@ -2252,7 +2258,10 @@ function Attendance({ data, refresh }: any) {
   const [selected, setSelected] = useState<any>(null);
   const [removing, setRemoving] = useState<any>(null);
   const toast = useToast();
-  const sessions = data.attendance || [];
+  const sessions = (data.attendance || []).filter(
+    (session: any) =>
+      session.status === "open" && Date.now() <= Number(session.ends_at),
+  );
   const captureLocation = () => {
     if (!navigator.geolocation)
       return toast("This device does not support location capture.", "error");
@@ -2283,7 +2292,10 @@ function Attendance({ data, refresh }: any) {
         title="Location-based attendance."
         description="Open a timed attendance session and allow check-in only within your chosen campus radius."
       >
-        <Button onClick={() => setCreating(true)}>
+        <Button
+          disabled={!subjects.length || !classSections.length}
+          onClick={() => setCreating(true)}
+        >
           <Plus size={16} /> New attendance
         </Button>
       </Heading>
@@ -2317,9 +2329,11 @@ function Attendance({ data, refresh }: any) {
               <h2>{session.title}</h2>
               <p>{session.location_name}</p>
               <div className="attendance-meta">
+                <span><BookOpen size={15} /> {session.subject_name || "Unassigned subject"}</span>
+                <span><Users size={15} /> {session.class_section_name || "All students"}</span>
                 <span><Clock size={15} /> {new Date(session.starts_at).toLocaleString()}</span>
                 <span><Target size={15} /> {session.radius_m} metre radius</span>
-                <span><Users size={15} /> {session.records.length} present</span>
+                <span><CheckCheck size={15} /> {session.records.length} present</span>
               </div>
               <div className="card-actions">
                 <Button variant="secondary small" onClick={() => setSelected(session)}>
@@ -2351,9 +2365,15 @@ function Attendance({ data, refresh }: any) {
       {!sessions.length && (
         <Empty
           title="Create your first attendance session"
-          description="Capture the institute location, choose the allowed radius, and set the attendance time."
+          description={
+            !subjects.length
+              ? "Create a subject before opening attendance."
+              : !classSections.length
+                ? "Create a student group to use as a class section before opening attendance."
+                : "Choose a subject and class section, then set the attendance location and time."
+          }
         >
-          <Button onClick={() => setCreating(true)}><Plus size={16} /> New attendance</Button>
+          <Button disabled={!subjects.length || !classSections.length} onClick={() => setCreating(true)}><Plus size={16} /> New attendance</Button>
         </Empty>
       )}
       {creating && (
@@ -2389,6 +2409,20 @@ function Attendance({ data, refresh }: any) {
               </Field>
               <Field label="Location name">
                 <input required maxLength={200} value={form.locationName} onChange={(event) => setForm({ ...form, locationName: event.target.value })} />
+              </Field>
+            </div>
+            <div className="grid two">
+              <Field label="Subject">
+                <select required value={form.subjectId} onChange={(event) => setForm({ ...form, subjectId: event.target.value })}>
+                  <option value="" disabled>Choose subject</option>
+                  {subjects.map((subject: Item) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Class section">
+                <select required value={form.classSectionId} onChange={(event) => setForm({ ...form, classSectionId: event.target.value })}>
+                  <option value="" disabled>Choose class section</option>
+                  {classSections.map((section: any) => <option value={section.id} key={section.id}>{section.name}</option>)}
+                </select>
               </Field>
             </div>
             <div className="attendance-location-capture">
@@ -2468,6 +2502,366 @@ function Attendance({ data, refresh }: any) {
             await refresh();
           }}
         />
+      )}
+    </>
+  );
+}
+
+type AttendanceExportRow = {
+  subject: string;
+  classSection: string;
+  session: string;
+  sessionDate: string;
+  student: string;
+  email: string;
+  status: "Present" | "Absent";
+  checkedIn: string;
+  distance: string;
+  accuracy: string;
+};
+
+function attendanceRows(session: any, data: any): AttendanceExportRow[] {
+  const memberIds = new Set(
+    (data.members || [])
+      .filter((member: any) => member.group_id === session.class_section_id)
+      .map((member: any) => member.user_id),
+  );
+  const students = (data.students || []).filter((student: any) =>
+    memberIds.has(student.id),
+  );
+  const studentsById = new Map(students.map((student: any) => [student.id, student]));
+  const recordedIds = new Set((session.records || []).map((record: any) => record.user_id));
+  const participants = [
+    ...students,
+    ...(session.records || [])
+      .filter((record: any) => !studentsById.has(record.user_id))
+      .map((record: any) => ({
+        id: record.user_id,
+        name: record.student_name,
+        email: record.student_email,
+      })),
+  ];
+  return participants.map((student: any) => {
+    const record = (session.records || []).find(
+      (entry: any) => entry.user_id === student.id,
+    );
+    return {
+      subject: session.subject_name || "Unassigned subject",
+      classSection: session.class_section_name || "All students",
+      session: session.title,
+      sessionDate: new Date(session.starts_at).toLocaleString(),
+      student: student.name || "Removed student",
+      email: student.email || "",
+      status: recordedIds.has(student.id) ? "Present" : "Absent",
+      checkedIn: record ? new Date(record.checked_at).toLocaleString() : "",
+      distance: record ? `${Math.round(record.distance_m)} m` : "",
+      accuracy: record ? `${Math.round(record.accuracy_m)} m` : "",
+    };
+  });
+}
+
+function downloadAttendanceExcel(rows: AttendanceExportRow[], label: string) {
+  const xmlEscape = (value: unknown) =>
+    String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&apos;");
+  const headers = [
+    "Subject",
+    "Class section",
+    "Session",
+    "Session date",
+    "Student",
+    "Email",
+    "Status",
+    "Checked in",
+    "Distance",
+    "GPS accuracy",
+  ];
+  const values = rows.map((row) => [
+    row.subject,
+    row.classSection,
+    row.session,
+    row.sessionDate,
+    row.student,
+    row.email,
+    row.status,
+    row.checkedIn,
+    row.distance,
+    row.accuracy,
+  ]);
+  const makeRow = (cells: unknown[], header = false) =>
+    `<Row>${cells
+      .map(
+        (cell) =>
+          `<Cell${header ? ' ss:StyleID="Header"' : ""}><Data ss:Type="String">${xmlEscape(cell)}</Data></Cell>`,
+      )
+      .join("")}</Row>`;
+  const present = rows.filter((row) => row.status === "Present").length;
+  const workbook = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Styles><Style ss:ID="Header"><Font ss:Bold="1"/><Interior ss:Color="#EAF0DE" ss:Pattern="Solid"/></Style></Styles>
+  <Worksheet ss:Name="Summary"><Table>
+    ${makeRow(["Attendance analysis"], true)}
+    ${makeRow(["Selection", label])}
+    ${makeRow(["Students marked present", present])}
+    ${makeRow(["Attendance rows", rows.length])}
+    ${makeRow(["Generated", new Date().toLocaleString()])}
+  </Table></Worksheet>
+  <Worksheet ss:Name="Attendance"><Table>
+    ${makeRow(headers, true)}
+    ${values.map((row) => makeRow(row)).join("\n")}
+  </Table></Worksheet>
+</Workbook>`;
+  const blob = new Blob(["\ufeff", workbook], {
+    type: "application/vnd.ms-excel;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `Attendance-${label.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "report"}.xls`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function AttendanceAnalysis({ data, refresh }: any) {
+  const archivedSessions = (data.attendance || []).filter(
+    (session: any) =>
+      session.status === "closed" || Date.now() > Number(session.ends_at),
+  );
+  const subjectOptions = Array.from(
+    new Map(
+      archivedSessions.map((session: any) => [
+        session.subject_id || "unassigned",
+        {
+          id: session.subject_id || "unassigned",
+          name: session.subject_name || "Unassigned subject",
+        },
+      ]),
+    ).values(),
+  ) as Array<{ id: string; name: string }>;
+  const [subjectId, setSubjectId] = useState("");
+  const activeSubjectId = subjectOptions.some((subject) => subject.id === subjectId)
+    ? subjectId
+    : subjectOptions[0]?.id || "";
+  const sectionOptions = Array.from(
+    new Map(
+      archivedSessions
+        .filter(
+          (session: any) =>
+            (session.subject_id || "unassigned") === activeSubjectId,
+        )
+        .map((session: any) => [
+          session.class_section_id || "unassigned",
+          {
+            id: session.class_section_id || "unassigned",
+            name: session.class_section_name || "All students",
+          },
+        ]),
+    ).values(),
+  ) as Array<{ id: string; name: string }>;
+  const [sectionId, setSectionId] = useState("");
+  const activeSectionId = sectionOptions.some((section) => section.id === sectionId)
+    ? sectionId
+    : sectionOptions[0]?.id || "";
+  const [period, setPeriod] = useState<"week" | "month" | "quarter">("month");
+  const [periodOpen, setPeriodOpen] = useState(false);
+  const [selected, setSelected] = useState<any>(null);
+  const toast = useToast();
+  const periodDays = period === "week" ? 7 : period === "month" ? 30 : 90;
+  const cutoff = Date.now() - periodDays * 86400000;
+  const sessions = archivedSessions
+    .filter(
+      (session: any) =>
+        (session.subject_id || "unassigned") === activeSubjectId &&
+        (session.class_section_id || "unassigned") === activeSectionId &&
+        Number(session.starts_at) >= cutoff,
+    )
+    .sort((a: any, b: any) => Number(b.starts_at) - Number(a.starts_at));
+  const rows: AttendanceExportRow[] = sessions.flatMap((session: any) =>
+    attendanceRows(session, data),
+  );
+  const present = rows.filter((row) => row.status === "Present").length;
+  const periodLabel =
+    period === "week" ? "Weekly" : period === "month" ? "Monthly" : "Quarterly";
+  const subjectName =
+    subjectOptions.find((subject) => subject.id === activeSubjectId)?.name || "Attendance";
+  const sectionName =
+    sectionOptions.find((section) => section.id === activeSectionId)?.name || "All students";
+  return (
+    <>
+      <Heading
+        eyebrow="ATTENDANCE ANALYSIS"
+        title="Attendance records, clearly organised."
+        description="Review closed sessions by subject, class section, and reporting period."
+      >
+        <div className="attendance-analysis-actions">
+          <button
+            className={`icon-button ${periodOpen ? "active" : ""}`}
+            type="button"
+            aria-label="Choose attendance reporting period"
+            aria-expanded={periodOpen}
+            title="Reporting period"
+            onClick={() => setPeriodOpen((open) => !open)}
+          >
+            <ArrowUpDown size={18} />
+          </button>
+          {periodOpen && (
+            <label className="attendance-period-picker">
+              <span>Period</span>
+              <select value={period} onChange={(event) => setPeriod(event.target.value as typeof period)}>
+                <option value="week">Weekly · last 7 days</option>
+                <option value="month">Monthly · last 30 days</option>
+                <option value="quarter">Quarterly · last 90 days</option>
+              </select>
+            </label>
+          )}
+          <Button
+            variant="secondary"
+            disabled={!sessions.length}
+            onClick={() => {
+              downloadAttendanceExcel(rows, `${subjectName}-${sectionName}-${periodLabel}`);
+              toast("Attendance Excel report downloaded.");
+            }}
+          >
+            <Download size={16} /> Download Excel
+          </Button>
+        </div>
+      </Heading>
+      {!archivedSessions.length ? (
+        <Empty
+          title="No closed attendance sessions yet"
+          description="When an attendance session closes, it will appear here automatically."
+        />
+      ) : (
+        <>
+          <div className="attendance-analysis-tabs" role="tablist" aria-label="Subjects">
+            {subjectOptions.map((subject) => (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeSubjectId === subject.id}
+                className={activeSubjectId === subject.id ? "active" : ""}
+                key={subject.id}
+                onClick={() => {
+                  setSubjectId(subject.id);
+                  setSectionId("");
+                }}
+              >
+                <BookOpen size={16} /> {subject.name}
+              </button>
+            ))}
+          </div>
+          <div className="attendance-section-tabs" role="tablist" aria-label="Class sections">
+            <span>Class section</span>
+            {sectionOptions.map((section) => (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeSectionId === section.id}
+                className={activeSectionId === section.id ? "active" : ""}
+                key={section.id}
+                onClick={() => setSectionId(section.id)}
+              >
+                <Users size={15} /> {section.name}
+              </button>
+            ))}
+          </div>
+          <div className="assignment-summary grid three attendance-analysis-summary">
+            <Stat icon={ClipboardList} label={`${periodLabel} sessions`} value={sessions.length} />
+            <Stat icon={CheckCheck} label="Present records" value={present} />
+            <Stat
+              icon={BarChart3}
+              label="Attendance rate"
+              value={rows.length ? `${Math.round((present / rows.length) * 100)}%` : "—"}
+            />
+          </div>
+          <section className="panel attendance-analysis-table">
+            <div className="attendance-report-heading">
+              <div>
+                <b>{subjectName} · {sectionName}</b>
+                <p>{periodLabel} view · newest session first</p>
+              </div>
+            </div>
+            {sessions.length ? (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>Date</th><th>Session</th><th>Present</th><th>Class size</th><th>Rate</th><th>Actions</th></tr>
+                  </thead>
+                  <tbody>
+                    {sessions.map((session: any) => {
+                      const sessionRows = attendanceRows(session, data);
+                      const sessionPresent = sessionRows.filter((row) => row.status === "Present").length;
+                      return (
+                        <tr key={session.id}>
+                          <td>{new Date(session.starts_at).toLocaleString()}</td>
+                          <td><b>{session.title}</b><small>{session.location_name}</small></td>
+                          <td>{sessionPresent}</td>
+                          <td>{sessionRows.length}</td>
+                          <td>{sessionRows.length ? `${Math.round((sessionPresent / sessionRows.length) * 100)}%` : "—"}</td>
+                          <td>
+                            <div className="table-actions">
+                              <Button variant="secondary small" onClick={() => setSelected(session)}><Eye size={14} /> Preview</Button>
+                              {session.status === "closed" && Date.now() <= Number(session.ends_at) && (
+                                <Button
+                                  variant="ghost small"
+                                  onClick={async () => {
+                                    try {
+                                      await patch(`/admin/attendance/${session.id}`, { status: "open" });
+                                      await refresh();
+                                      toast("Attendance session reopened.");
+                                    } catch (error: any) {
+                                      toast(error.message, "error");
+                                    }
+                                  }}
+                                >Reopen</Button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <Empty title={`No ${periodLabel.toLowerCase()} sessions`} description="Choose another reporting period to see older attendance sessions." />
+            )}
+          </section>
+        </>
+      )}
+      {selected && (
+        <Modal title={selected.title} onClose={() => setSelected(null)} wide>
+          <div className="attendance-report-heading">
+            <div>
+              <b>{selected.subject_name || "Unassigned subject"} · {selected.class_section_name || "All students"}</b>
+              <p>{new Date(selected.starts_at).toLocaleString()} · {selected.location_name}</p>
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Student</th><th>Status</th><th>Checked in</th><th>Distance</th><th>GPS accuracy</th></tr></thead>
+              <tbody>
+                {attendanceRows(selected, data).map((row) => (
+                  <tr key={`${selected.id}-${row.email || row.student}`}>
+                    <td><b>{row.student}</b><small>{row.email}</small></td>
+                    <td><span className={`status ${row.status === "Present" ? "published" : "draft"}`}>{row.status}</span></td>
+                    <td>{row.checkedIn || "—"}</td>
+                    <td>{row.distance || "—"}</td>
+                    <td>{row.accuracy || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {!attendanceRows(selected, data).length && <Empty title="No students in this class section" description="Add students to this class section to calculate attendance." />}
+        </Modal>
       )}
     </>
   );

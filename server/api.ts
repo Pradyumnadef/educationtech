@@ -17,6 +17,8 @@ const uid = (req: any) => req.user.id;
 const text = z.string().trim().min(1).max(200);
 const attendanceSessionSchema = z.object({
   title: text,
+  subjectId: z.string().trim().min(1).max(200),
+  classSectionId: z.string().trim().min(1).max(200),
   locationName: z.string().trim().min(1).max(200),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
@@ -292,11 +294,20 @@ api.get("/learning", async (req, res) => {
   const studentAttendanceRecords = (await savedAttendanceRecords()).filter(
     (record: any) => record.user_id === user.id,
   );
+  const attendanceSections = new Set(
+    (
+      await query("SELECT group_id FROM group_members WHERE user_id=?", [
+        user.id,
+      ])
+    ).map((membership: any) => membership.group_id),
+  );
   const attendance = (await savedAttendanceSessions())
     .filter(
       (session: any) =>
         session.status === "open" &&
-        Number(session.ends_at) >= now(),
+        Number(session.ends_at) >= now() &&
+        (!session.class_section_id ||
+          attendanceSections.has(session.class_section_id)),
     )
     .sort((a: any, b: any) => Number(a.starts_at) - Number(b.starts_at))
     .map((session: any) => {
@@ -355,6 +366,14 @@ api.post("/attendance/:id/check-in", async (req, res) => {
   ]);
   const attendance = attendanceRow ? JSON.parse(attendanceRow.value) : null;
   if (!attendance) bad("This attendance session was not found.", 404);
+  if (attendance.class_section_id) {
+    const membership = await one(
+      "SELECT id FROM group_members WHERE group_id=? AND user_id=?",
+      [attendance.class_section_id, user.id],
+    );
+    if (!membership)
+      bad("This attendance session is for another class section.", 403);
+  }
   const time = now();
   if (
     attendance.status !== "open" ||
@@ -771,10 +790,24 @@ api.post("/admin/attendance", async (req, res) => {
     bad("The attendance closing time must be after its opening time.");
   if (body.endsAt - body.startsAt > 24 * 60 * 60 * 1000)
     bad("An attendance session can remain open for up to 24 hours.");
+  const subject = await one(
+    "SELECT id,name FROM content WHERE id=? AND kind='subject'",
+    [body.subjectId],
+  );
+  if (!subject) bad("Choose an available subject.");
+  const classSection = await one(
+    "SELECT id,name FROM student_groups WHERE id=?",
+    [body.classSectionId],
+  );
+  if (!classSection) bad("Choose an available class section.");
   const session = {
     id: id(),
     teacher_id: uid(req),
     title: body.title,
+    subject_id: subject.id,
+    subject_name: subject.name,
+    class_section_id: classSection.id,
+    class_section_name: classSection.name,
     location_name: body.locationName,
     latitude: body.latitude,
     longitude: body.longitude,

@@ -29,6 +29,7 @@ import {
   AlertTriangle,
   MapPin,
   Navigation,
+  Users,
   X,
   ArrowUpDown,
 } from "lucide-react";
@@ -838,6 +839,8 @@ function StudentAttendance({ data, refresh }: { data: any; refresh: () => any })
               <h2>{session.title}</h2>
               <p>{session.location_name}</p>
               <div className="attendance-meta">
+                <span><BookOpen size={15} /> {session.subject_name || "Class attendance"}</span>
+                <span><Users size={15} /> {session.class_section_name || "Your class"}</span>
                 <span>
                   <Clock size={15} /> {new Date(session.starts_at).toLocaleString()}
                 </span>

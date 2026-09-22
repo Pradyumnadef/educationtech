@@ -1822,6 +1822,90 @@ a:focus-visible {
 .attendance-card .card-actions {
   margin-top: auto;
 }
+.attendance-analysis-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  position: relative;
+}
+.attendance-analysis-actions .icon-button.active {
+  color: var(--green);
+  background: var(--soft);
+}
+.attendance-period-picker {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 0.55rem);
+  right: 0;
+  min-width: 230px;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  background: white;
+  box-shadow: 0 16px 40px rgba(35, 67, 49, 0.13);
+}
+.attendance-period-picker span {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.attendance-period-picker select {
+  width: 100%;
+}
+.attendance-analysis-tabs,
+.attendance-section-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  overflow-x: auto;
+  margin-bottom: 1rem;
+  padding: 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: var(--soft);
+}
+.attendance-analysis-tabs button,
+.attendance-section-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 0 0 auto;
+  padding: 0.7rem 0.9rem;
+  border-radius: 0.65rem;
+  color: var(--muted);
+  font-weight: 650;
+}
+.attendance-analysis-tabs button.active,
+.attendance-section-tabs button.active {
+  color: var(--green);
+  background: white;
+  box-shadow: 0 4px 14px rgba(35, 67, 49, 0.08);
+}
+.attendance-section-tabs > span {
+  flex: 0 0 auto;
+  padding: 0 0.55rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.attendance-analysis-summary {
+  margin: 1rem 0;
+}
+.attendance-analysis-table {
+  padding: 1.2rem;
+}
+.attendance-analysis-table .attendance-report-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
 @media (max-width: 760px) {
   .attendance-grid {
     grid-template-columns: 1fr;
@@ -1845,6 +1929,17 @@ a:focus-visible {
   .attendance-card .button {
     width: 100%;
     justify-content: center;
+  }
+  .attendance-analysis-actions {
+    width: 100%;
+  }
+  .attendance-analysis-actions .button {
+    flex: 1;
+    justify-content: center;
+  }
+  .attendance-period-picker {
+    left: 0;
+    right: auto;
   }
 }
 .sidebar-logo {
