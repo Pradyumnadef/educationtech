@@ -37,6 +37,7 @@ import {
   MapPin,
   Navigation,
   Target,
+  ArrowUpDown,
 } from "lucide-react";
 import Teachers from "./Teachers";
 import Shell from "../components/Shell";
@@ -66,6 +67,9 @@ import {
   date,
   uploadFile,
   contentKindLabel,
+  DriveSort,
+  contentFolderSize,
+  sortDriveEntries,
 } from "../lib";
 import { ActivityChart, Stat, Profile } from "./Student";
 export default function Admin() {
@@ -874,6 +878,8 @@ function ContentDrive({ data, refresh }: any) {
   const location = useLocation();
   const currentId = new URLSearchParams(location.search).get("folder");
   const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [driveSort, setDriveSort] = useState<DriveSort>("date-desc");
   const [editor, setEditor] = useState<any>(null);
   const [preview, setPreview] = useState<any>(null);
   const [confirm, setConfirm] = useState<Item | null>(null);
@@ -902,6 +908,20 @@ function ContentDrive({ data, refresh }: any) {
     (material.assets || []).length
       ? (material.assets || []).map((asset: any) => ({ asset, material }))
       : [{ asset: null, material }],
+  );
+  const sortedFolders = sortDriveEntries(folders, driveSort, (folder) => ({
+    name: folder.name,
+    date: Number(folder.created_at || 0),
+    size: contentFolderSize(items, folder.id),
+  }));
+  const sortedUploadedItems = sortDriveEntries(
+    uploadedItems,
+    driveSort,
+    ({ asset, material }) => ({
+      name: asset?.filename || material.name,
+      date: Number(asset?.created_at || material.created_at || 0),
+      size: Number(asset?.size || 0),
+    }),
   );
   const crumbs: Item[] = [];
   if (current) {
@@ -970,20 +990,60 @@ function ContentDrive({ data, refresh }: any) {
         ))}
       </nav>
       <div className="drive-toolbar">
-        <label className="search-box">
-          <Search size={17} />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search this folder…"
-            aria-label="Search this folder"
-          />
-        </label>
+        <div className="drive-toolbar-controls">
+          <div className={`drive-search-control ${searchOpen ? "expanded" : ""}`}>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Search this folder"
+              aria-expanded={searchOpen}
+              onClick={() => setSearchOpen(true)}
+            >
+              <Search size={17} />
+            </button>
+            {searchOpen && (
+              <>
+                <input
+                  autoFocus
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search this folder…"
+                  aria-label="Search this folder"
+                />
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Close search"
+                  onClick={() => {
+                    setQuery("");
+                    setSearchOpen(false);
+                  }}
+                >
+                  <X size={15} />
+                </button>
+              </>
+            )}
+          </div>
+          <label className="drive-sort-control">
+            <ArrowUpDown size={16} />
+            <select
+              value={driveSort}
+              onChange={(event) => setDriveSort(event.target.value as DriveSort)}
+              aria-label="Sort folder contents"
+            >
+              <option value="date-desc">Date: newest first</option>
+              <option value="date-asc">Date: oldest first</option>
+              <option value="name-asc">Name: A–Z</option>
+              <option value="size-desc">Size: largest first</option>
+              <option value="size-asc">Size: smallest first</option>
+            </select>
+          </label>
+        </div>
         <span>{folders.length + uploadedItems.length} items</span>
       </div>
       {!!(folders.length || uploadedItems.length) && (
         <div className="drive-explorer-list admin-drive-list" role="list">
-          {folders.map((folder) => (
+          {sortedFolders.map((folder) => (
             <article
               className="drive-explorer-row"
               key={folder.id}
@@ -1028,7 +1088,7 @@ function ContentDrive({ data, refresh }: any) {
               </div>
             </article>
           ))}
-          {uploadedItems.map(({ asset, material }, index) => {
+          {sortedUploadedItems.map(({ asset, material }, index) => {
             const isVideo = asset?.asset_type === "video";
             return (
               <article

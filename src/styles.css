@@ -6467,8 +6467,60 @@ th,
   gap: 1rem;
   margin-bottom: 1.6rem;
 }
-.drive-toolbar .search-box {
-  width: min(34rem, 100%);
+.drive-toolbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+.drive-search-control {
+  width: 2.75rem;
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.72rem;
+  background: var(--card);
+  transition: width 180ms ease;
+}
+.drive-search-control.expanded {
+  width: min(25rem, 42vw);
+}
+.drive-search-control .icon-button {
+  flex: 0 0 2.65rem;
+  border: 0;
+  background: transparent;
+}
+.drive-search-control input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  color: var(--ink);
+  background: transparent;
+}
+.drive-search-control input::placeholder {
+  color: var(--muted);
+}
+.drive-sort-control {
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 0.72rem;
+  color: var(--muted);
+  background: var(--card);
+}
+.drive-sort-control select {
+  max-width: 12rem;
+  border: 0;
+  outline: 0;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
 }
 .drive-toolbar > span {
   color: var(--muted);
@@ -6791,6 +6843,17 @@ a.drive-folder-card {
   .drive-toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+  .drive-toolbar-controls {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .drive-search-control.expanded {
+    width: 100%;
+    flex-basis: 100%;
+  }
+  .drive-sort-control {
+    max-width: 100%;
   }
   .drive-folder-grid {
     grid-template-columns: 1fr;

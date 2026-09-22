@@ -230,14 +230,14 @@ api.get("/learning", async (req, res) => {
           },
     );
   const assetRows = await query(
-    `SELECT a.content_id,u.id,u.filename,u.mime,u.size,a.asset_type,a.sort_order,'asset' AS route_type
+    `SELECT a.content_id,u.id,u.filename,u.mime,u.size,u.created_at,a.asset_type,a.sort_order,'asset' AS route_type
      FROM content_assets a JOIN uploads u ON u.id=a.upload_id AND u.state='ready'
      UNION ALL
-     SELECT c.id AS content_id,u.id,u.filename,u.mime,u.size,'video' AS asset_type,-1 AS sort_order,'video' AS route_type
+     SELECT c.id AS content_id,u.id,u.filename,u.mime,u.size,u.created_at,'video' AS asset_type,-1 AS sort_order,'video' AS route_type
      FROM content c JOIN uploads u ON u.storage_key=c.storage_key AND u.state='ready'
      WHERE c.storage_key<>''
      UNION ALL
-     SELECT c.id AS content_id,u.id,u.filename,u.mime,u.size,'file' AS asset_type,-1 AS sort_order,'resource' AS route_type
+     SELECT c.id AS content_id,u.id,u.filename,u.mime,u.size,u.created_at,'file' AS asset_type,-1 AS sort_order,'resource' AS route_type
      FROM content c JOIN uploads u ON u.storage_key=c.resource_key AND u.state='ready'
      WHERE c.resource_key<>''
      ORDER BY content_id,asset_type DESC,sort_order`,
@@ -637,14 +637,14 @@ api.get("/admin/overview", async (_req, res) => {
     "SELECT * FROM content ORDER BY created_at DESC",
   );
   const assetRows = await query(
-    `SELECT a.content_id,u.id,u.filename,u.mime,u.size,a.asset_type,a.sort_order
+    `SELECT a.content_id,u.id,u.filename,u.mime,u.size,u.created_at,a.asset_type,a.sort_order
      FROM content_assets a JOIN uploads u ON u.id=a.upload_id AND u.state='ready'
      UNION ALL
-     SELECT c.id AS content_id,u.id,u.filename,u.mime,u.size,'video' AS asset_type,-1 AS sort_order
+     SELECT c.id AS content_id,u.id,u.filename,u.mime,u.size,u.created_at,'video' AS asset_type,-1 AS sort_order
      FROM content c JOIN uploads u ON u.storage_key=c.storage_key AND u.state='ready'
      WHERE c.storage_key<>''
      UNION ALL
-     SELECT c.id AS content_id,u.id,u.filename,u.mime,u.size,'file' AS asset_type,-1 AS sort_order
+     SELECT c.id AS content_id,u.id,u.filename,u.mime,u.size,u.created_at,'file' AS asset_type,-1 AS sort_order
      FROM content c JOIN uploads u ON u.storage_key=c.resource_key AND u.state='ready'
      WHERE c.resource_key<>''
      ORDER BY content_id,asset_type DESC,sort_order`,

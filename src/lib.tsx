@@ -43,10 +43,50 @@ export type Item = {
     filename: string;
     mime: string;
     size: number;
+    created_at?: number;
     asset_type: "video" | "file";
     url?: string;
   }>;
 };
+export type DriveSort =
+  | "date-desc"
+  | "date-asc"
+  | "name-asc"
+  | "size-desc"
+  | "size-asc";
+export function sortDriveEntries<T>(
+  entries: T[],
+  sort: DriveSort,
+  details: (entry: T) => { name: string; date: number; size: number },
+) {
+  return [...entries].sort((left, right) => {
+    const a = details(left);
+    const b = details(right);
+    if (sort === "name-asc")
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    if (sort === "size-desc") return b.size - a.size || a.name.localeCompare(b.name);
+    if (sort === "size-asc") return a.size - b.size || a.name.localeCompare(b.name);
+    if (sort === "date-asc") return a.date - b.date || a.name.localeCompare(b.name);
+    return b.date - a.date || a.name.localeCompare(b.name);
+  });
+}
+export function contentFolderSize(items: Item[], folderId: string) {
+  const included = new Set([folderId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const item of items) {
+      if (item.parent_id && included.has(item.parent_id) && !included.has(item.id)) {
+        included.add(item.id);
+        changed = true;
+      }
+    }
+  }
+  return items
+    .filter((item) => included.has(item.id))
+    .flatMap((item) => item.assets || [])
+    .reduce((total, asset) => total + Number(asset.size || 0), 0);
+}
 export type User = {
   id: string;
   name: string;

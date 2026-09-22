@@ -30,6 +30,7 @@ import {
   MapPin,
   Navigation,
   X,
+  ArrowUpDown,
 } from "lucide-react";
 import Shell from "../components/Shell";
 import PdfViewer from "../components/PdfViewer";
@@ -58,6 +59,9 @@ import {
   Logo,
   uploadFile,
   contentKindLabel,
+  DriveSort,
+  contentFolderSize,
+  sortDriveEntries,
 } from "../lib";
 export function ActivityChart({ events = [] }: { events: any[] }) {
   const days = Array.from({ length: 7 }, (_, i) => {
@@ -885,6 +889,8 @@ function StudentDrive({
 }) {
   const location = useLocation();
   const [search, setSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [driveSort, setDriveSort] = useState<DriveSort>("date-desc");
   const items: Item[] = data.content;
   const requestedId = new URLSearchParams(location.search).get("folder");
   const currentId = requestedId || subjectId || "";
@@ -919,6 +925,16 @@ function StudentDrive({
       )
       .map((asset) => ({ asset, material })),
   );
+  const sortedFolders = sortDriveEntries(folders, driveSort, (folder) => ({
+    name: folder.name,
+    date: Number(folder.created_at || 0),
+    size: contentFolderSize(items, folder.id),
+  }));
+  const sortedFiles = sortDriveEntries(files, driveSort, ({ asset, material }) => ({
+    name: asset.filename,
+    date: Number(asset.created_at || material.created_at || 0),
+    size: Number(asset.size || 0),
+  }));
   const trail: Item[] = [];
   if (current) {
     let node: Item | undefined = current;
@@ -959,20 +975,60 @@ function StudentDrive({
         ))}
       </nav>
       <div className="drive-toolbar student-drive-toolbar">
-        <label className="search-box">
-          <Search size={17} />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search this folder…"
-            aria-label="Search this folder"
-          />
-        </label>
+        <div className="drive-toolbar-controls">
+          <div className={`drive-search-control ${searchOpen ? "expanded" : ""}`}>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Search this folder"
+              aria-expanded={searchOpen}
+              onClick={() => setSearchOpen(true)}
+            >
+              <Search size={17} />
+            </button>
+            {searchOpen && (
+              <>
+                <input
+                  autoFocus
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search this folder…"
+                  aria-label="Search this folder"
+                />
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Close search"
+                  onClick={() => {
+                    setSearch("");
+                    setSearchOpen(false);
+                  }}
+                >
+                  <X size={15} />
+                </button>
+              </>
+            )}
+          </div>
+          <label className="drive-sort-control">
+            <ArrowUpDown size={16} />
+            <select
+              value={driveSort}
+              onChange={(event) => setDriveSort(event.target.value as DriveSort)}
+              aria-label="Sort folder contents"
+            >
+              <option value="date-desc">Date: newest first</option>
+              <option value="date-asc">Date: oldest first</option>
+              <option value="name-asc">Name: A–Z</option>
+              <option value="size-desc">Size: largest first</option>
+              <option value="size-asc">Size: smallest first</option>
+            </select>
+          </label>
+        </div>
         <span>{folders.length + files.length} items</span>
       </div>
       {hasItems ? (
         <div className="drive-explorer-list" role="list">
-          {folders.map((folder) => (
+          {sortedFolders.map((folder) => (
             <Link
               className="drive-explorer-row"
               to={linkFor(folder)}
@@ -990,7 +1046,7 @@ function StudentDrive({
               <ChevronRight size={18} />
             </Link>
           ))}
-          {files.map(({ asset, material }) => {
+          {sortedFiles.map(({ asset, material }) => {
             const isVideo = asset.asset_type === "video";
             const target = isVideo
               ? `/app/watch/${material.id}?asset=${encodeURIComponent(asset.id)}`
