@@ -18,7 +18,7 @@ const text = z.string().trim().min(1).max(200);
 const attendanceSessionSchema = z.object({
   title: text,
   subjectId: z.string().trim().min(1).max(200),
-  classSection: text,
+  groupId: z.string().trim().min(1).max(200),
   locationName: z.string().trim().min(1).max(200),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
@@ -51,6 +51,12 @@ async function savedAttendanceSessions() {
 async function savedAttendanceRecords() {
   const rows = await query(
     "SELECT value FROM settings WHERE id LIKE 'attendance-record:%'",
+  );
+  return rows.map((row: any) => JSON.parse(row.value));
+}
+async function savedStudentProfiles() {
+  const rows = await query(
+    "SELECT value FROM settings WHERE id LIKE 'student-profile:%'",
   );
   return rows.map((row: any) => JSON.parse(row.value));
 }
@@ -294,11 +300,20 @@ api.get("/learning", async (req, res) => {
   const studentAttendanceRecords = (await savedAttendanceRecords()).filter(
     (record: any) => record.user_id === user.id,
   );
+  const attendanceGroups = new Set(
+    (
+      await query("SELECT group_id FROM group_members WHERE user_id=?", [
+        user.id,
+      ])
+    ).map((membership: any) => membership.group_id),
+  );
   const attendance = (await savedAttendanceSessions())
     .filter(
       (session: any) =>
         session.status === "open" &&
-        Number(session.ends_at) >= now(),
+        Number(session.ends_at) >= now() &&
+        (!session.class_section_id ||
+          attendanceGroups.has(session.class_section_id)),
     )
     .sort((a: any, b: any) => Number(a.starts_at) - Number(b.starts_at))
     .map((session: any) => {
@@ -357,6 +372,14 @@ api.post("/attendance/:id/check-in", async (req, res) => {
   ]);
   const attendance = attendanceRow ? JSON.parse(attendanceRow.value) : null;
   if (!attendance) bad("This attendance session was not found.", 404);
+  if (attendance.class_section_id) {
+    const membership = await one(
+      "SELECT id FROM group_members WHERE group_id=? AND user_id=?",
+      [attendance.class_section_id, user.id],
+    );
+    if (!membership)
+      bad("This attendance session is for another student group.", 403);
+  }
   const time = now();
   if (
     attendance.status !== "open" ||
@@ -599,15 +622,63 @@ api.post("/progress/:id", async (req, res) => {
   await run("UPDATE users SET last_active=? WHERE id=?", [now(), uid(req)]);
   res.json({ ok: true, completed });
 });
+api.get("/onboarding/options", async (_req, res) => {
+  res.json({
+    groups: await query("SELECT id,name FROM student_groups ORDER BY name"),
+  });
+});
 api.patch("/profile", async (req, res) => {
+  const user = (req as any).user;
   const b = z
     .object({
       name: text,
       avatar: safePicture.optional(),
       interests: z.array(z.string().max(80)).max(30).optional(),
       onboarding: z.boolean().optional(),
+      groupId: z.string().trim().min(1).max(200).optional(),
+      rollNumber: z
+        .string()
+        .trim()
+        .regex(/^[A-Za-z0-9][A-Za-z0-9/_-]{0,49}$/, "Use letters, numbers, hyphens, underscores, or slashes for the roll number.")
+        .optional(),
     })
     .parse(req.body);
+  let studentProfile: any = null;
+  if (b.onboarding && user.role === "student") {
+    if (user.onboarding)
+      bad("Registration details are already complete. Ask your teacher to change your group.", 409);
+    if (!b.groupId || !b.rollNumber)
+      bad("Name, student group, and roll number are required.");
+    const group = await one("SELECT id,name FROM student_groups WHERE id=?", [
+      b.groupId,
+    ]);
+    if (!group) bad("Choose an available student group.");
+    const duplicate = (await savedStudentProfiles()).find(
+      (profile: any) =>
+        profile.user_id !== user.id &&
+        profile.group_id === group.id &&
+        String(profile.roll_number).toLowerCase() === b.rollNumber!.toLowerCase(),
+    );
+    if (duplicate)
+      bad("That roll number is already registered in this student group.", 409);
+    studentProfile = {
+      user_id: user.id,
+      group_id: group.id,
+      group_name: group.name,
+      roll_number: b.rollNumber,
+      updated_at: now(),
+    };
+    await run("DELETE FROM group_members WHERE user_id=?", [user.id]);
+    await insert("group_members", {
+      id: id(),
+      group_id: group.id,
+      user_id: user.id,
+    });
+    await run(
+      "INSERT INTO settings(id,value) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value",
+      [`student-profile:${user.id}`, JSON.stringify(studentProfile)],
+    );
+  }
   await update(
     "users",
     {
@@ -619,7 +690,10 @@ api.patch("/profile", async (req, res) => {
     },
     uid(req),
   );
-  res.json(safeUser(await one("SELECT * FROM users WHERE id=?", [uid(req)])));
+  res.json({
+    ...safeUser(await one("SELECT * FROM users WHERE id=?", [uid(req)])),
+    ...(studentProfile || {}),
+  });
 });
 api.post("/notifications/read", async (req, res) => {
   const notifications = await query("SELECT id FROM announcements");
@@ -670,6 +744,19 @@ api.get("/admin/overview", async (_req, res) => {
   });
   const groups = await query("SELECT * FROM student_groups ORDER BY name");
   const members = await query("SELECT * FROM group_members");
+  const studentProfiles = await savedStudentProfiles();
+  for (const student of students) {
+    const profile = studentProfiles.find(
+      (entry: any) => entry.user_id === student.id,
+    );
+    const membership = members.find((entry: any) => entry.user_id === student.id);
+    const group = groups.find(
+      (entry: any) => entry.id === (profile?.group_id || membership?.group_id),
+    );
+    student.roll_number = profile?.roll_number || "";
+    student.group_id = group?.id || "";
+    student.group_name = group?.name || profile?.group_name || "";
+  }
   const grants = await query("SELECT * FROM access_grants");
   const announcements = await query(
     "SELECT * FROM announcements ORDER BY created_at DESC",
@@ -715,6 +802,7 @@ api.get("/admin/overview", async (_req, res) => {
         ...record,
         student_name: student?.name || "Removed student",
         student_email: student?.email || "",
+        student_roll_number: student?.roll_number || "",
       };
     })
     .sort((a: any, b: any) => Number(b.checked_at) - Number(a.checked_at));
@@ -779,18 +867,18 @@ api.post("/admin/attendance", async (req, res) => {
   );
   if (!subject) bad("Choose an available subject.");
   const classSection = await one(
-    "SELECT id,name FROM student_groups WHERE LOWER(name)=LOWER(?)",
-    [body.classSection],
+    "SELECT id,name FROM student_groups WHERE id=?",
+    [body.groupId],
   );
+  if (!classSection) bad("Choose an available student group.");
   const session = {
     id: id(),
     teacher_id: uid(req),
     title: body.title,
     subject_id: subject.id,
     subject_name: subject.name,
-    class_section_id:
-      classSection?.id || `custom:${body.classSection.toLocaleLowerCase()}`,
-    class_section_name: classSection?.name || body.classSection,
+    class_section_id: classSection.id,
+    class_section_name: classSection.name,
     location_name: body.locationName,
     latitude: body.latitude,
     longitude: body.longitude,
@@ -879,6 +967,9 @@ api.delete("/admin/students/:id", async (req, res) => {
     [req.params.id],
   );
   if (!student) bad("Student not found.", 404);
+  await run("DELETE FROM settings WHERE id=?", [
+    `student-profile:${student.id}`,
+  ]);
   await run("DELETE FROM users WHERE id=?", [student.id]);
   await audit(uid(req), "student.delete", student.id);
   res.json({ ok: true });
@@ -888,6 +979,9 @@ api.post("/admin/students/:id/reset-access", async (req, res) => {
     req.params.id,
   ]);
   await run("DELETE FROM group_members WHERE user_id=?", [req.params.id]);
+  await run("DELETE FROM settings WHERE id=?", [
+    `student-profile:${req.params.id}`,
+  ]);
   await audit(uid(req), "student.reset-access", req.params.id as string);
   res.json({ ok: true });
 });

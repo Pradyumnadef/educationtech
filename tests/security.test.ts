@@ -303,16 +303,45 @@ test("invalid OTP fails; a valid OTP is single-use; resend has a cooldown", asyn
     400,
   );
   const c = { cookie: verified.cookie, csrf: verified.data.csrf };
-  await request(
+  assert.equal(
+    (
+      await request(
+        "/profile",
+        "PATCH",
+        { name: "New learner", onboarding: true },
+        c,
+      )
+    ).status,
+    400,
+  );
+  const completedProfile = await request(
     "/profile",
     "PATCH",
-    { name: "New learner", interests: ["Mathematics"], onboarding: true },
+    {
+      name: "New learner",
+      rollNumber: "NEW-001",
+      groupId: "group-1",
+      interests: ["Mathematics"],
+      onboarding: true,
+    },
     c,
   );
+  assert.equal(completedProfile.status, 200, JSON.stringify(completedProfile.data));
+  assert.equal(completedProfile.data.roll_number, "NEW-001");
+  assert.equal(completedProfile.data.group_id, "group-1");
+  const adminOverview = await request("/admin/overview", "GET", undefined, teacher);
+  const registeredStudent = adminOverview.data.students.find(
+    (entry: any) => entry.email === "new-learner@test.local",
+  );
+  assert.equal(registeredStudent.roll_number, "NEW-001");
+  assert.equal(registeredStudent.group_name, "Curious minds · Batch A");
   const learn = await request("/learning", "GET", undefined, c);
+  assert.ok(
+    learn.data.content.some((entry: any) => entry.id === "english"),
+  );
   assert.equal(
-    learn.data.content.filter((c: any) => c.kind === "video").length,
-    0,
+    learn.data.content.some((entry: any) => entry.id === "organic"),
+    false,
   );
 });
 test("OTP attempt limit cannot be bypassed with a correct code after five failures", async () => {
@@ -698,7 +727,7 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
     {
       title: "Secure attendance",
       subjectId: "english",
-      classSection: "Section A",
+      groupId: "group-1",
       locationName: "Test campus",
       latitude: 20,
       longitude: 85,
@@ -710,7 +739,7 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
   );
   assert.equal(created.status, 200, JSON.stringify(created.data));
   assert.equal(created.data.subject_name, "English");
-  assert.equal(created.data.class_section_name, "Section A");
+  assert.equal(created.data.class_section_name, "Curious minds · Batch A");
   const sessionId = created.data.id;
   const outsiderChallenge = await request("/auth/otp/send", "POST", {
     identifier: "jamie@lumio.local",
@@ -734,7 +763,18 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
     outsiderLearning.data.attendance.some(
       (session: any) => session.id === sessionId,
     ),
-    true,
+    false,
+  );
+  assert.equal(
+    (
+      await request(
+        `/attendance/${sessionId}/check-in`,
+        "POST",
+        { latitude: 20, longitude: 85, accuracyM: 5 },
+        outsider,
+      )
+    ).status,
+    403,
   );
   assert.equal(
     (
@@ -831,7 +871,7 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
     {
       title: "Expired attendance",
       subjectId: "english",
-      classSection: "Section A",
+      groupId: "group-1",
       locationName: "Test campus",
       latitude: 20,
       longitude: 85,
@@ -868,7 +908,7 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
         {
           title: "Not allowed",
           subjectId: "english",
-          classSection: "Section A",
+          groupId: "group-1",
           locationName: "Campus",
           latitude: 20,
           longitude: 85,

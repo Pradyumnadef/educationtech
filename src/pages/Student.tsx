@@ -2244,8 +2244,18 @@ function Onboarding() {
   const { user, setUser } = useAuth(),
     navigate = useNavigate(),
     toast = useToast();
+  const {
+    data: onboardingOptions,
+    error: onboardingError,
+    loading: onboardingLoading,
+  } = useData<{ groups: Array<{ id: string; name: string }> }>(
+    "/onboarding/options",
+  );
+  const groups = onboardingOptions?.groups || [];
   const [step, setStep] = useState(0),
     [name, setName] = useState(user.name === "New learner" ? "" : user.name),
+    [rollNumber, setRollNumber] = useState(""),
+    [groupId, setGroupId] = useState(""),
     [selected, setSelected] = useState<string[]>(user.interests || []),
     [topics, setTopics] = useState(""),
     [busy, setBusy] = useState(false);
@@ -2274,7 +2284,7 @@ function Onboarding() {
         <p>
           {
             [
-              "A space for your ideas, your questions, and your possibility. What should we call you?",
+              "Tell us your name, roll number, and student group to prepare your learning space.",
               "Pick the subjects you’d love to explore. You can always change these later.",
               "Are there particular learning goals you’d love to achieve?",
               "Your teacher will bring the right lessons into your space. Until then, make yourself at home.",
@@ -2282,15 +2292,47 @@ function Onboarding() {
           }
         </p>
         {step === 0 && (
-          <Field label="Your full name">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Your full name"
-              maxLength={200}
-              autoFocus
-            />
-          </Field>
+          <div className="onboarding-registration-fields">
+            <Field label="Your full name">
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your full name"
+                maxLength={200}
+                autoFocus
+                required
+              />
+            </Field>
+            <Field label="Roll number">
+              <input
+                value={rollNumber}
+                onChange={(e) => setRollNumber(e.target.value)}
+                placeholder="Enter your roll number"
+                maxLength={50}
+                pattern="[A-Za-z0-9][A-Za-z0-9/_-]*"
+                required
+              />
+            </Field>
+            <Field label="Student group">
+              <select
+                value={groupId}
+                onChange={(e) => setGroupId(e.target.value)}
+                disabled={onboardingLoading || !groups.length}
+                required
+              >
+                <option value="" disabled>
+                  {onboardingLoading ? "Loading groups…" : "Choose one group"}
+                </option>
+                {groups.map((group) => (
+                  <option value={group.id} key={group.id}>{group.name}</option>
+                ))}
+              </select>
+              {onboardingError && <small className="danger-text">Could not load student groups. Try refreshing this page.</small>}
+              {!onboardingLoading && !onboardingError && !groups.length && (
+                <small className="danger-text">No student group is available yet. Ask your teacher to create one.</small>
+              )}
+            </Field>
+          </div>
         )}
         {step === 1 && (
           <div className="onboarding-subjects">
@@ -2343,7 +2385,10 @@ function Onboarding() {
             </Button>
           )}
           <Button
-            disabled={step === 0 && !name.trim()}
+            disabled={
+              step === 0 &&
+              (!name.trim() || !rollNumber.trim() || !groupId || onboardingLoading)
+            }
             busy={busy}
             onClick={async () => {
               if (step < 3) {
@@ -2354,6 +2399,8 @@ function Onboarding() {
               try {
                 const u = await patch("/profile", {
                   name,
+                  rollNumber,
+                  groupId,
                   interests: [
                     ...selected,
                     ...topics

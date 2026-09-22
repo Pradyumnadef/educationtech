@@ -298,7 +298,7 @@ function Students({ data, refresh }: any) {
   const students = data.students
     .filter(
       (s: any) =>
-        `${s.name} ${s.email} ${s.phone}`
+        `${s.name} ${s.email} ${s.phone} ${s.roll_number} ${s.group_name}`
           .toLowerCase()
           .includes(debounced.toLowerCase()) &&
         (status === "all" || s.status === status),
@@ -380,6 +380,9 @@ function Students({ data, refresh }: any) {
                       <span>
                         <b>{s.name}</b>
                         <small>{s.email || s.phone}</small>
+                        {(s.roll_number || s.group_name) && (
+                          <small>{s.group_name || "No group"}{s.roll_number ? ` · Roll ${s.roll_number}` : ""}</small>
+                        )}
                       </span>
                     </button>
                   </td>
@@ -582,6 +585,9 @@ function StudentDetail({ student: s, data, onClose, refresh }: any) {
           <p>
             {s.email} {s.phone && `· ${s.phone}`}
           </p>
+          {(s.group_name || s.roll_number) && (
+            <p>{s.group_name || "No student group"}{s.roll_number ? ` · Roll ${s.roll_number}` : ""}</p>
+          )}
         </div>
         <span className={`status ${s.status}`}>{s.status}</span>
       </div>
@@ -2230,14 +2236,7 @@ function UploadedFile({ file, label, onRemove }: any) {
 }
 function Attendance({ data, refresh }: any) {
   const subjects = data.content.filter((item: Item) => item.kind === "subject");
-  const classSectionSuggestions = Array.from(
-    new Set([
-      ...(data.groups || []).map((section: any) => section.name),
-      ...(data.attendance || [])
-        .map((session: any) => session.class_section_name)
-        .filter(Boolean),
-    ]),
-  ) as string[];
+  const studentGroups = data.groups || [];
   const synergyCampus = {
     locationName: "Synergy Institute of Technology, Bhubaneswar",
     latitude: "20.3473125",
@@ -2252,7 +2251,7 @@ function Attendance({ data, refresh }: any) {
   const emptyForm = () => ({
     title: "Class attendance",
     subjectId: subjects[0]?.id || "",
-    classSection: classSectionSuggestions[0] || "",
+    groupId: studentGroups[0]?.id || "",
     ...synergyCampus,
     radiusM: 25,
     startsAt: localDateTime(Date.now()),
@@ -2300,7 +2299,7 @@ function Attendance({ data, refresh }: any) {
         description="Open a timed attendance session and allow check-in only within your chosen campus radius."
       >
         <Button
-          disabled={!subjects.length}
+          disabled={!subjects.length || !studentGroups.length}
           onClick={() => setCreating(true)}
         >
           <Plus size={16} /> New attendance
@@ -2375,10 +2374,12 @@ function Attendance({ data, refresh }: any) {
           description={
             !subjects.length
               ? "Create a subject before opening attendance."
-              : "Choose a subject and class section, then set the attendance location and time."
+              : !studentGroups.length
+                ? "Create a student group before opening attendance."
+                : "Choose a subject and student group, then set the attendance location and time."
           }
         >
-          <Button disabled={!subjects.length} onClick={() => setCreating(true)}><Plus size={16} /> New attendance</Button>
+          <Button disabled={!subjects.length || !studentGroups.length} onClick={() => setCreating(true)}><Plus size={16} /> New attendance</Button>
         </Empty>
       )}
       {creating && (
@@ -2423,19 +2424,11 @@ function Attendance({ data, refresh }: any) {
                   {subjects.map((subject: Item) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}
                 </select>
               </Field>
-              <Field label="Class section">
-                <input
-                  required
-                  maxLength={200}
-                  list="attendance-class-sections"
-                  value={form.classSection}
-                  onChange={(event) => setForm({ ...form, classSection: event.target.value })}
-                  placeholder="For example, Section A"
-                />
-                <datalist id="attendance-class-sections">
-                  {classSectionSuggestions.map((section) => <option value={section} key={section} />)}
-                </datalist>
-                <small>Enter a section name, or choose a previous suggestion.</small>
+              <Field label="Student group">
+                <select required value={form.groupId} onChange={(event) => setForm({ ...form, groupId: event.target.value })}>
+                  <option value="" disabled>Choose student group</option>
+                  {studentGroups.map((group: any) => <option value={group.id} key={group.id}>{group.name}</option>)}
+                </select>
               </Field>
             </div>
             <div className="attendance-location-capture">
@@ -2488,11 +2481,12 @@ function Attendance({ data, refresh }: any) {
           </div>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Student</th><th>Checked in</th><th>Distance</th><th>GPS accuracy</th></tr></thead>
+              <thead><tr><th>Student</th><th>Roll number</th><th>Checked in</th><th>Distance</th><th>GPS accuracy</th></tr></thead>
               <tbody>
                 {selected.records.map((record: any) => (
                   <tr key={record.id}>
                     <td><b>{record.student_name}</b><small>{record.student_email}</small></td>
+                    <td>{record.student_roll_number || "—"}</td>
                     <td>{new Date(record.checked_at).toLocaleString()}</td>
                     <td>{Math.round(record.distance_m)} m</td>
                     <td>{Math.round(record.accuracy_m)} m</td>
@@ -2526,6 +2520,7 @@ type AttendanceExportRow = {
   session: string;
   sessionDate: string;
   student: string;
+  rollNumber: string;
   email: string;
   status: "Present" | "Absent";
   checkedIn: string;
@@ -2558,6 +2553,7 @@ function attendanceRows(session: any, data: any): AttendanceExportRow[] {
         id: record.user_id,
         name: record.student_name,
         email: record.student_email,
+        roll_number: record.student_roll_number,
       })),
   ];
   return participants.map((student: any) => {
@@ -2570,6 +2566,7 @@ function attendanceRows(session: any, data: any): AttendanceExportRow[] {
       session: session.title,
       sessionDate: new Date(session.starts_at).toLocaleString(),
       student: student.name || "Removed student",
+      rollNumber: student.roll_number || "",
       email: student.email || "",
       status: recordedIds.has(student.id) ? "Present" : "Absent",
       checkedIn: record ? new Date(record.checked_at).toLocaleString() : "",
@@ -2589,10 +2586,11 @@ function downloadAttendanceExcel(rows: AttendanceExportRow[], label: string) {
       .replaceAll("'", "&apos;");
   const headers = [
     "Subject",
-    "Class section",
+    "Student group",
     "Session",
     "Session date",
     "Student",
+    "Roll number",
     "Email",
     "Status",
     "Checked in",
@@ -2605,6 +2603,7 @@ function downloadAttendanceExcel(rows: AttendanceExportRow[], label: string) {
     row.session,
     row.sessionDate,
     row.student,
+    row.rollNumber,
     row.email,
     row.status,
     row.checkedIn,
@@ -2721,7 +2720,7 @@ function AttendanceAnalysis({ data, refresh }: any) {
       <Heading
         eyebrow="ATTENDANCE ANALYSIS"
         title="Attendance records, clearly organised."
-        description="Review closed sessions by subject, class section, and reporting period."
+        description="Review closed sessions by subject, student group, and reporting period."
       >
         <div className="attendance-analysis-actions">
           <button
@@ -2780,8 +2779,8 @@ function AttendanceAnalysis({ data, refresh }: any) {
               </button>
             ))}
           </div>
-          <div className="attendance-section-tabs" role="tablist" aria-label="Class sections">
-            <span>Class section</span>
+          <div className="attendance-section-tabs" role="tablist" aria-label="Student groups">
+            <span>Student group</span>
             {sectionOptions.map((section) => (
               <button
                 type="button"
@@ -2870,11 +2869,12 @@ function AttendanceAnalysis({ data, refresh }: any) {
           </div>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Student</th><th>Status</th><th>Checked in</th><th>Distance</th><th>GPS accuracy</th></tr></thead>
+              <thead><tr><th>Student</th><th>Roll number</th><th>Status</th><th>Checked in</th><th>Distance</th><th>GPS accuracy</th></tr></thead>
               <tbody>
                 {attendanceRows(selected, data).map((row) => (
                   <tr key={`${selected.id}-${row.email || row.student}`}>
                     <td><b>{row.student}</b><small>{row.email}</small></td>
+                    <td>{row.rollNumber || "—"}</td>
                     <td><span className={`status ${row.status === "Present" ? "published" : "draft"}`}>{row.status}</span></td>
                     <td>{row.checkedIn || "—"}</td>
                     <td>{row.distance || "—"}</td>
@@ -2884,7 +2884,7 @@ function AttendanceAnalysis({ data, refresh }: any) {
               </tbody>
             </table>
           </div>
-          {!attendanceRows(selected, data).length && <Empty title="No students in this class section" description="Add students to this class section to calculate attendance." />}
+          {!attendanceRows(selected, data).length && <Empty title="No students in this group" description="Add students to this student group to calculate attendance." />}
         </Modal>
       )}
     </>
