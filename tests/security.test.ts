@@ -797,6 +797,39 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
     ),
     true,
   );
+  const expired = await request(
+    "/admin/attendance",
+    "POST",
+    {
+      title: "Expired attendance",
+      locationName: "Test campus",
+      latitude: 20,
+      longitude: 85,
+      radiusM: 50,
+      startsAt: Date.now() - 120000,
+      endsAt: Date.now() - 60000,
+    },
+    teacher,
+  );
+  assert.equal(expired.status, 200, JSON.stringify(expired.data));
+  const withoutExpired = await request("/learning", "GET", undefined, student);
+  assert.equal(
+    withoutExpired.data.attendance.some(
+      (entry: any) => entry.id === expired.data.id,
+    ),
+    false,
+  );
+  assert.equal(
+    (
+      await request(
+        `/admin/attendance/${expired.data.id}`,
+        "DELETE",
+        undefined,
+        teacher,
+      )
+    ).status,
+    200,
+  );
   assert.equal(
     (
       await request(

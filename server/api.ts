@@ -296,7 +296,7 @@ api.get("/learning", async (req, res) => {
     .filter(
       (session: any) =>
         session.status === "open" &&
-        Number(session.ends_at) > now() - 86400000,
+        Number(session.ends_at) >= now(),
     )
     .sort((a: any, b: any) => Number(a.starts_at) - Number(b.starts_at))
     .map((session: any) => {

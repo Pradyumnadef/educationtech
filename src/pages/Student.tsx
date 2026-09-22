@@ -648,6 +648,20 @@ function StudentAttendance({ data, refresh }: { data: any; refresh: () => any })
   const permissionRequested = useRef(false);
   const toast = useToast();
   const sessions = data.attendance || [];
+  useEffect(() => {
+    const refreshAttendance = () => void refresh();
+    const timer = window.setInterval(refreshAttendance, 4000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refreshAttendance();
+    };
+    window.addEventListener("focus", refreshAttendance);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshAttendance);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [refresh]);
   const readLocationPermission = async () => {
     if (!navigator.permissions?.query) return undefined;
     try {
