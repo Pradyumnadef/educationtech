@@ -45,7 +45,8 @@ export async function groupsWithSubjects(groups?: any[]) {
         Number(left.created_at || left.starts_at || 0),
     );
 
-  return rows.map((group: any): StudentGroupWithSubject => {
+  const assignedByGroup = new Map<string, string>();
+  for (const group of rows) {
     let assignedId = mappedByGroup.get(group.id) || "";
     if (!assignedId) {
       const previousSession = attendance.find(
@@ -59,6 +60,24 @@ export async function groupsWithSubjects(groups?: any[]) {
         subjects.find((subject: any) => subjectCode(subject.name) === legacyCode)
           ?.id || "";
     }
+    assignedByGroup.set(group.id, assignedId);
+  }
+
+  // Older installations only had Section-A and Section-B. If one was renamed
+  // before explicit mappings existed, its subject is the remaining legacy one.
+  if (rows.length === 2) {
+    const unresolved = rows.filter((group: any) => !assignedByGroup.get(group.id));
+    const assignedIds = new Set(Array.from(assignedByGroup.values()).filter(Boolean));
+    const remainingLegacySubjects = subjects.filter(
+      (subject: any) =>
+        subjectCode(subject.name) && !assignedIds.has(subject.id),
+    );
+    if (unresolved.length === 1 && remainingLegacySubjects.length === 1)
+      assignedByGroup.set(unresolved[0].id, remainingLegacySubjects[0].id);
+  }
+
+  return rows.map((group: any): StudentGroupWithSubject => {
+    const assignedId = assignedByGroup.get(group.id) || "";
     const subject = subjects.find((entry: any) => entry.id === assignedId);
     return {
       ...group,

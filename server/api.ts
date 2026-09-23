@@ -629,6 +629,7 @@ api.patch("/profile", async (req, res) => {
     if (!group) bad("Choose an available student group.");
     if (!group.subject_id)
       bad("This student group needs a subject. Ask your teacher to update it.");
+    await saveGroupSubject(group.id, group.subject_id);
     const duplicate = (await savedStudentProfiles()).find(
       (profile: any) =>
         profile.user_id !== user.id &&
