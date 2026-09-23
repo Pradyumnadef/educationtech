@@ -1004,10 +1004,11 @@ api.post("/admin/students/:id/reset-access", async (req, res) => {
   res.json({ ok: true });
 });
 async function validateContent(b: any, recordId?: string) {
+  if (b.status === "draft") b.public = 0;
   if (b.kind === "subject") {
     if (b.parent_id) bad("Subjects cannot have a parent.");
   } else {
-    const parent = await one("SELECT kind FROM content WHERE id=?", [
+    const parent = await one("SELECT kind,status,public FROM content WHERE id=?", [
       b.parent_id,
     ]);
     const allowedParents: Record<string, string[]> = {
@@ -1017,6 +1018,11 @@ async function validateContent(b: any, recordId?: string) {
     const validParent = allowedParents[b.kind]?.includes(parent?.kind);
     if (!validParent || b.parent_id === recordId)
       bad(`Select a valid location for this ${b.kind}.`);
+    if (
+      b.public === 1 &&
+      (parent.status !== "published" || parent.public !== 1)
+    )
+      bad("Choose a Public parent before making this item Public.");
     if (recordId) {
       let ancestorId = b.parent_id;
       const visited = new Set<string>();
@@ -1031,7 +1037,6 @@ async function validateContent(b: any, recordId?: string) {
       }
     }
   }
-  if (b.kind !== "subject") b.public = 0;
   for (const [field, mime] of [
     ["storage_key", "video/"],
     ["caption_key", "text/vtt"],
@@ -1114,7 +1119,7 @@ api.post("/admin/content/folder-import", async (req, res) => {
     })
     .parse(req.body);
   const parent = await one(
-    "SELECT id,kind,status FROM content WHERE id=? AND kind IN ('subject','folder')",
+    "SELECT id,kind,status,public FROM content WHERE id=? AND kind IN ('subject','folder')",
     [body.parentId],
   );
   if (!parent) bad("Choose an available subject or folder.");
@@ -1167,8 +1172,8 @@ api.post("/admin/content/folder-import", async (req, res) => {
       id: contentId,
       description: "",
       thumbnail: "english",
-      status: "published",
-      public: 0,
+      status: parent.status,
+      public: parent.status === "published" ? parent.public : 0,
       duration: 0,
       tags: "[]",
       notes: "",
@@ -1288,6 +1293,21 @@ api.put("/admin/content/:id", async (req, res) => {
     },
     req.params.id as string,
   );
+  if (content.status === "draft" || content.public !== 1) {
+    const descendants = await query(
+      `WITH RECURSIVE nested(id) AS (
+         SELECT id FROM content WHERE parent_id=?
+         UNION ALL
+         SELECT c.id FROM content c JOIN nested n ON c.parent_id=n.id
+       ) SELECT id FROM nested`,
+      [req.params.id],
+    );
+    for (const descendant of descendants as any[])
+      await run("UPDATE content SET public=0,updated_at=? WHERE id=?", [
+        now(),
+        descendant.id,
+      ]);
+  }
   await saveContentAssets(req.params.id as string, assets);
   await audit(uid(req), "content.update", req.params.id as string, b.name);
   const replacedKeys = ["storage_key", "caption_key", "resource_key"]

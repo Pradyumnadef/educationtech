@@ -15,6 +15,7 @@ export async function publicContentTree() {
       if (
         visited.has(node.id) ||
         node.status !== "published" ||
+        node.public !== 1 ||
         (node.publish_at && Number(node.publish_at) > currentTime)
       ) {
         valid = false;
@@ -28,7 +29,7 @@ export async function publicContentTree() {
         break;
       }
     }
-    if (valid && subject?.public === 1) allowed.add(candidate.id);
+    if (valid && subject) allowed.add(candidate.id);
   }
 
   return {

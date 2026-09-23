@@ -72,6 +72,27 @@ import {
 } from "../lib";
 import { ActivityChart, Stat, Profile } from "./Student";
 import { createXlsxWorkbook, type XlsxSheet } from "../xlsx";
+type ContentVisibility = "draft" | "students" | "public";
+function contentVisibility(item: Pick<Item, "status" | "public">): ContentVisibility {
+  if (item.status === "draft") return "draft";
+  return Number(item.public) === 1 ? "public" : "students";
+}
+function visibilityLabel(item: Pick<Item, "status" | "public">) {
+  const visibility = contentVisibility(item);
+  return visibility === "public"
+    ? "Public"
+    : visibility === "students"
+      ? "Students"
+      : "Draft";
+}
+function visibilityStatusClass(item: Pick<Item, "status" | "public">) {
+  const visibility = contentVisibility(item);
+  return visibility === "public"
+    ? "published"
+    : visibility === "students"
+      ? "active"
+      : "draft";
+}
 export default function Admin() {
   const { data, error, loading, refresh } = useData("/admin/overview");
   const location = useLocation();
@@ -1140,7 +1161,7 @@ function ContentDrive({ data, refresh }: any) {
                 </span>
               </Link>
               <span className="drive-explorer-type">
-                {folder.kind === "subject" ? "Subject" : "Folder"}
+                {folder.kind === "subject" ? "Subject" : "Folder"} · {visibilityLabel(folder)}
               </span>
               <div className="drive-row-actions">
                 <button
@@ -1194,7 +1215,7 @@ function ContentDrive({ data, refresh }: any) {
                     ? "Video"
                     : asset?.mime === "application/pdf"
                       ? "PDF"
-                      : "Document"}
+                      : "Document"} · {visibilityLabel(material)}
                 </span>
                 <div className="drive-row-actions">
                   {asset && (
@@ -1349,7 +1370,7 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
       `${c.name} ${c.description} ${c.tags}`
         .toLowerCase()
         .includes(debounced.toLowerCase()) &&
-      (status === "all" || c.status === status),
+      (status === "all" || contentVisibility(c) === status),
   );
   const displayedParent = (item: Item) => {
     const parent = data.content.find(
@@ -1480,10 +1501,11 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
             setStatus(e.target.value);
             setPage(1);
           }}
-          aria-label="Filter content status"
+          aria-label="Filter content visibility"
         >
-          <option value="all">All statuses</option>
-          <option value="published">Published</option>
+          <option value="all">All visibility</option>
+          <option value="public">Public</option>
+          <option value="students">Students</option>
           <option value="draft">Draft</option>
         </select>
         <span>
@@ -1508,7 +1530,7 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
               <tr>
                 <th>{kind === "video" ? "Learning material" : "Name"}</th>
                 <th>Located in</th>
-                <th>Status</th>
+                <th>Visibility</th>
                 <th>{kind === "video" ? "Uploaded items" : "Contents"}</th>
                 <th>Added</th>
                 <th>Actions</th>
@@ -1542,10 +1564,10 @@ function Content({ kind, data, refresh, merged = false, onKindChange }: any) {
                   </td>
                   <td>{displayedParent(c)?.name || "Your library"}</td>
                   <td>
-                    <span className={`status ${c.status}`}>
+                    <span className={`status ${visibilityStatusClass(c)}`}>
                       {c.publish_at && c.publish_at > Date.now()
                         ? "Scheduled"
-                        : c.status}
+                        : visibilityLabel(c)}
                     </span>
                   </td>
                   <td>
@@ -1639,7 +1661,9 @@ function MaterialPreviewLibrary({ rows, onEdit }: any) {
                 <p>{item.description || "No description added."}</p>
               </div>
               <div className="material-preview-card-actions">
-                <span className={`status ${item.status}`}>{item.status}</span>
+                <span className={`status ${visibilityStatusClass(item)}`}>
+                  {visibilityLabel(item)}
+                </span>
                 <Button
                   type="button"
                   variant="secondary small"
@@ -1754,6 +1778,18 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
   const kindLabel = contentKindLabel(form.kind);
   const videoLimit = Number(uploadLimits?.video || 50 * 1024 ** 2);
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
+  const selectedParent = data.content.find(
+    (content: Item) => content.id === form.parent_id,
+  );
+  const canChoosePublic =
+    form.kind === "subject" ||
+    (selectedParent && contentVisibility(selectedParent) === "public");
+  const setVisibility = (visibility: ContentVisibility) =>
+    setForm((current: any) => ({
+      ...current,
+      status: visibility === "draft" ? "draft" : "published",
+      public: visibility === "public" ? 1 : 0,
+    }));
   const parentKind: Record<string, string> = {
     folder: "folder",
     chapter: "subject",
@@ -1905,7 +1941,21 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
               <Field label="Location">
                 <select
                   value={form.parent_id || ""}
-                  onChange={(e) => set("parent_id", e.target.value)}
+                  onChange={(e) => {
+                    const parentId = e.target.value;
+                    const parent = data.content.find(
+                      (content: Item) => content.id === parentId,
+                    );
+                    setForm((current: any) => ({
+                      ...current,
+                      parent_id: parentId,
+                      ...(contentVisibility(current) === "public" &&
+                      parent &&
+                      contentVisibility(parent) !== "public"
+                        ? { status: "published", public: 0 }
+                        : {}),
+                    }));
+                  }}
                   required
                 >
                   <option value="">Select a subject or folder</option>
@@ -1985,14 +2035,29 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
               />
             </Field>
             <div className="grid two">
-              <Field label="Status">
+              <Field label="Visibility">
                 <select
-                  value={form.status}
-                  onChange={(e) => set("status", e.target.value)}
+                  value={contentVisibility(form)}
+                  onChange={(e) =>
+                    setVisibility(e.target.value as ContentVisibility)
+                  }
                 >
                   <option value="draft">Draft</option>
-                  <option value="published">Published</option>
+                  <option value="students">Students</option>
+                  <option value="public" disabled={!canChoosePublic}>
+                    Public
+                  </option>
                 </select>
+                <small>
+                  {contentVisibility(form) === "draft"
+                    ? "Hidden from students and public visitors."
+                    : contentVisibility(form) === "students"
+                      ? "Available to signed-in students only."
+                      : "Available to students and visitors in Guest Explore."}
+                </small>
+                {!canChoosePublic && form.kind !== "subject" && (
+                  <small>Make the parent folder Public first.</small>
+                )}
               </Field>
               {form.kind === "video" && (
                 <Field label="Duration (seconds)">
@@ -2006,16 +2071,6 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
                 </Field>
               )}
             </div>
-            {form.kind === "subject" && (
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={!!form.public}
-                  onChange={(e) => set("public", e.target.checked ? 1 : 0)}
-                />{" "}
-                Show this subject and its published contents in Guest Explore
-              </label>
-            )}
           </div>
         </div>
         {form.kind === "video" && (
@@ -2245,7 +2300,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
         )}
         <Field
           label="Scheduled publish date (optional)"
-          hint="Content must also be set to Published. Parent items must be published for students to view it."
+          hint="The item and its parent folders must be available before students or public visitors can view it."
         >
           <input
             type="datetime-local"

@@ -208,6 +208,82 @@ test("guest explore exposes only published content under public subjects", async
   assert.equal(JSON.stringify(explore.data).includes("password_hash"), false);
   assert.equal(JSON.stringify(explore.data).includes('"notes"'), false);
 
+  const publicFolderPayload = {
+    kind: "folder",
+    parent_id: "english",
+    name: "Guest visibility folder",
+    description: "Visibility test",
+    thumbnail: "english",
+    status: "published",
+    public: 1,
+    duration: 0,
+    tags: [],
+    notes: "",
+    storage_key: "",
+    caption_key: "",
+    resource_key: "",
+    publish_at: null,
+  };
+  const publicFolder = await request(
+    "/admin/content",
+    "POST",
+    publicFolderPayload,
+    teacher,
+  );
+  assert.equal(publicFolder.status, 200, JSON.stringify(publicFolder.data));
+  const publicMaterial = await request(
+    "/admin/content",
+    "POST",
+    {
+      ...publicFolderPayload,
+      kind: "video",
+      parent_id: publicFolder.data.id,
+      name: "Guest visibility material",
+    },
+    teacher,
+  );
+  assert.equal(publicMaterial.status, 200, JSON.stringify(publicMaterial.data));
+  assert.ok(
+    (await request("/explore")).data.content.some(
+      (item: any) => item.id === publicMaterial.data.id,
+    ),
+  );
+  assert.equal(
+    (
+      await request(
+        `/admin/content/${publicFolder.data.id}`,
+        "PUT",
+        { ...publicFolderPayload, public: 0 },
+        teacher,
+      )
+    ).status,
+    200,
+  );
+  const afterPrivateParent = await request("/explore");
+  assert.equal(
+    afterPrivateParent.data.content.some(
+      (item: any) => item.id === publicFolder.data.id,
+    ),
+    false,
+  );
+  assert.equal(
+    afterPrivateParent.data.content.some(
+      (item: any) => item.id === publicMaterial.data.id,
+    ),
+    false,
+  );
+  assert.equal(
+    (
+      await request(
+        `/admin/content/${publicFolder.data.id}`,
+        "DELETE",
+        undefined,
+        teacher,
+      )
+    ).status,
+    200,
+  );
+
   const hidden = await request(
     "/admin/content",
     "POST",

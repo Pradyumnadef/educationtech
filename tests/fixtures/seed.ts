@@ -124,7 +124,7 @@ export async function seed() {
       description,
       thumbnail,
       status: "published",
-      public: 0,
+      public: 1,
       created_at: t,
       updated_at: t,
     });
@@ -136,7 +136,7 @@ export async function seed() {
       description: "Your first lightbulb moments.",
       thumbnail,
       status: "published",
-      public: 0,
+      public: 1,
       created_at: t,
       updated_at: t,
     });
@@ -177,7 +177,7 @@ export async function seed() {
         description: `A focused lesson in ${chapters.find((c) => c[0] === key)![2].toLowerCase()}. Learn the key ideas, follow an example, and take a moment to practice.`,
         thumbnail: chapters.find((c) => c[0] === key)![4],
         status: "published",
-        public: 0,
+        public: 1,
         duration: 90,
         tags: JSON.stringify(["Foundations", "Beginner"]),
         notes:

@@ -96,9 +96,39 @@ export async function update(
       [...Object.values(record), recordId],
     );
 }
+async function migrateContentVisibility() {
+  const migrationId = "migration:content-visibility-v1";
+  if (await one("SELECT id FROM settings WHERE id=?", [migrationId])) return;
+
+  const nodes = await query(
+    "SELECT id,parent_id,kind,status,public FROM content",
+  );
+  const byId = new Map(nodes.map((node: any) => [node.id, node]));
+  for (const candidate of nodes as any[]) {
+    if (candidate.status !== "published") continue;
+    let node: any = candidate;
+    const visited = new Set<string>();
+    let publicSubject = false;
+    while (node && !visited.has(node.id) && visited.size < 64) {
+      visited.add(node.id);
+      if (node.kind === "subject") {
+        publicSubject = node.public === 1;
+        break;
+      }
+      node = node.parent_id ? byId.get(node.parent_id) : null;
+    }
+    if (publicSubject && candidate.public !== 1)
+      await run("UPDATE content SET public=1 WHERE id=?", [candidate.id]);
+  }
+  await run(
+    "INSERT INTO settings(id,value) VALUES (?,?) ON CONFLICT(id) DO NOTHING",
+    [migrationId, String(now())],
+  );
+}
 export async function initDB() {
   if (pool && process.env.DATABASE_MANAGED_SCHEMA === "true") {
     await query("SELECT id FROM platform_owner LIMIT 1");
+    await migrateContentVisibility();
     return;
   }
   const schema = `
@@ -152,6 +182,7 @@ CREATE INDEX IF NOT EXISTS idx_submission_student ON assignment_submissions(user
 `;
   for (const statement of schema.split(";").filter((s) => s.trim()))
     await run(statement);
+  await migrateContentVisibility();
 }
 // The singleton claim and account are committed together. PostgreSQL's
 // transaction lock also serializes requests across separate app instances.
