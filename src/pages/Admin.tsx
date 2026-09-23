@@ -2564,7 +2564,15 @@ function attendanceRows(session: any, data: any): AttendanceExportRow[] {
         roll_number: record.student_roll_number,
       })),
   ];
-  return participants.map((student: any) => {
+  return participants
+    .sort((left: any, right: any) =>
+      String(left.roll_number || left.name || "").localeCompare(
+        String(right.roll_number || right.name || ""),
+        undefined,
+        { numeric: true, sensitivity: "base" },
+      ),
+    )
+    .map((student: any) => {
     const record = (session.records || []).find(
       (entry: any) => entry.user_id === student.id,
     );
@@ -2581,7 +2589,7 @@ function attendanceRows(session: any, data: any): AttendanceExportRow[] {
       distance: record ? `${Math.round(record.distance_m)} m` : "",
       accuracy: record ? `${Math.round(record.accuracy_m)} m` : "",
     };
-  });
+    });
 }
 
 function downloadAttendanceExcel(rows: AttendanceExportRow[], label: string) {
@@ -2593,30 +2601,20 @@ function downloadAttendanceExcel(rows: AttendanceExportRow[], label: string) {
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&apos;");
   const headers = [
-    "Subject",
-    "Student group",
-    "Session",
-    "Session date",
-    "Student",
+    "Group / Section",
+    "Student name",
     "Roll number",
-    "Email",
-    "Status",
-    "Checked in",
-    "Distance",
-    "GPS accuracy",
+    "Subject",
+    "Date",
+    "Attendance",
   ];
   const values = rows.map((row) => [
-    row.subject,
     row.classSection,
-    row.session,
-    row.sessionDate,
     row.student,
     row.rollNumber,
-    row.email,
+    row.subject,
+    row.sessionDate,
     row.status,
-    row.checkedIn,
-    row.distance,
-    row.accuracy,
   ]);
   const makeRow = (cells: unknown[], header = false) =>
     `<Row>${cells
@@ -2634,7 +2632,7 @@ function downloadAttendanceExcel(rows: AttendanceExportRow[], label: string) {
     ${makeRow(["Attendance analysis"], true)}
     ${makeRow(["Selection", label])}
     ${makeRow(["Students marked present", present])}
-    ${makeRow(["Attendance rows", rows.length])}
+    ${makeRow(["Student attendance rows", rows.length])}
     ${makeRow(["Generated", new Date().toLocaleString()])}
   </Table></Worksheet>
   <Worksheet ss:Name="Attendance"><Table>
@@ -2701,7 +2699,6 @@ function AttendanceAnalysis({ data, refresh }: any) {
     : sectionOptions[0]?.id || "";
   const [period, setPeriod] = useState<"week" | "month" | "quarter">("month");
   const [periodOpen, setPeriodOpen] = useState(false);
-  const [selected, setSelected] = useState<any>(null);
   const toast = useToast();
   const periodDays = period === "week" ? 7 : period === "month" ? 30 : 90;
   const cutoff = Date.now() - periodDays * 86400000;
@@ -2818,50 +2815,39 @@ function AttendanceAnalysis({ data, refresh }: any) {
           <section className="panel attendance-analysis-table">
             <div className="attendance-report-heading">
               <div>
-                <b>{subjectName} · {sectionName}</b>
-                <p>{periodLabel} view · newest session first</p>
+                <b>Student attendance preview</b>
+                <small>{sectionName} · {subjectName}</small>
+                <p>{periodLabel} student table · newest date first</p>
               </div>
             </div>
             {sessions.length ? (
               <div className="table-wrap">
-                <table>
+                <table className="attendance-student-table">
                   <thead>
-                    <tr><th>Date</th><th>Session</th><th>Present</th><th>Class size</th><th>Rate</th><th>Actions</th></tr>
+                    <tr>
+                      <th>Group / Section</th>
+                      <th>Student name</th>
+                      <th>Roll number</th>
+                      <th>Subject</th>
+                      <th>Date</th>
+                      <th>Attendance</th>
+                    </tr>
                   </thead>
                   <tbody>
-                    {sessions.map((session: any) => {
-                      const sessionRows = attendanceRows(session, data);
-                      const sessionPresent = sessionRows.filter((row) => row.status === "Present").length;
-                      const hasRoster = hasAttendanceRoster(session, data);
-                      return (
-                        <tr key={session.id}>
-                          <td>{new Date(session.starts_at).toLocaleString()}</td>
-                          <td><b>{session.title}</b><small>{session.location_name}</small></td>
-                          <td>{sessionPresent}</td>
-                          <td>{hasRoster ? sessionRows.length : "—"}</td>
-                          <td>{hasRoster && sessionRows.length ? `${Math.round((sessionPresent / sessionRows.length) * 100)}%` : "—"}</td>
-                          <td>
-                            <div className="table-actions">
-                              <Button variant="secondary small" onClick={() => setSelected(session)}><Eye size={14} /> Preview</Button>
-                              {session.status === "closed" && Date.now() <= Number(session.ends_at) && (
-                                <Button
-                                  variant="ghost small"
-                                  onClick={async () => {
-                                    try {
-                                      await patch(`/admin/attendance/${session.id}`, { status: "open" });
-                                      await refresh();
-                                      toast("Attendance session reopened.");
-                                    } catch (error: any) {
-                                      toast(error.message, "error");
-                                    }
-                                  }}
-                                >Reopen</Button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {rows.map((row, index) => (
+                      <tr key={`${row.session}-${row.email || row.student}-${row.sessionDate}-${index}`}>
+                        <td><b>{row.classSection}</b></td>
+                        <td><b>{row.student}</b>{row.email && <small>{row.email}</small>}</td>
+                        <td>{row.rollNumber || "—"}</td>
+                        <td>{row.subject}</td>
+                        <td>{row.sessionDate}</td>
+                        <td>
+                          <span className={`status ${row.status === "Present" ? "published" : "draft"}`}>
+                            {row.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -2870,34 +2856,6 @@ function AttendanceAnalysis({ data, refresh }: any) {
             )}
           </section>
         </>
-      )}
-      {selected && (
-        <Modal title={selected.title} onClose={() => setSelected(null)} wide>
-          <div className="attendance-report-heading">
-            <div>
-              <b>{selected.subject_name || "Unassigned subject"} · {selected.class_section_name || "All students"}</b>
-              <p>{new Date(selected.starts_at).toLocaleString()} · {selected.location_name}</p>
-            </div>
-          </div>
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>Student</th><th>Roll number</th><th>Status</th><th>Checked in</th><th>Distance</th><th>GPS accuracy</th></tr></thead>
-              <tbody>
-                {attendanceRows(selected, data).map((row) => (
-                  <tr key={`${selected.id}-${row.email || row.student}`}>
-                    <td><b>{row.student}</b><small>{row.email}</small></td>
-                    <td>{row.rollNumber || "—"}</td>
-                    <td><span className={`status ${row.status === "Present" ? "published" : "draft"}`}>{row.status}</span></td>
-                    <td>{row.checkedIn || "—"}</td>
-                    <td>{row.distance || "—"}</td>
-                    <td>{row.accuracy || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {!attendanceRows(selected, data).length && <Empty title="No students in this group" description="Add students to this student group to calculate attendance." />}
-        </Modal>
       )}
     </>
   );

@@ -1913,6 +1913,19 @@ a:focus-visible {
   align-items: center;
   justify-content: space-between;
 }
+.attendance-student-table {
+  min-width: 850px;
+}
+.attendance-student-table th {
+  font-weight: 700;
+  color: var(--green);
+}
+.attendance-student-table td:nth-child(3),
+.attendance-student-table th:nth-child(3),
+.attendance-student-table td:last-child,
+.attendance-student-table th:last-child {
+  text-align: center;
+}
 @media (max-width: 760px) {
   .attendance-grid {
     grid-template-columns: 1fr;
