@@ -81,4 +81,3 @@ export async function saveGroupSubject(groupId: string, subjectId: string) {
   );
   return subject;
 }
-
