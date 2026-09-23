@@ -2592,7 +2592,12 @@ function attendanceRows(session: any, data: any): AttendanceExportRow[] {
     });
 }
 
-function downloadAttendanceExcel(rows: AttendanceExportRow[], label: string) {
+function attendanceDateKey(value: number) {
+  const date = new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function downloadAttendanceExcel(sessions: any[], data: any, label: string) {
   const xmlEscape = (value: unknown) =>
     String(value ?? "")
       .replaceAll("&", "&amp;")
@@ -2608,14 +2613,15 @@ function downloadAttendanceExcel(rows: AttendanceExportRow[], label: string) {
     "Date",
     "Attendance",
   ];
-  const values = rows.map((row) => [
-    row.classSection,
-    row.student,
-    row.rollNumber,
-    row.subject,
-    row.sessionDate,
-    row.status,
-  ]);
+  const valuesFor = (rows: AttendanceExportRow[]) =>
+    rows.map((row) => [
+      row.classSection,
+      row.student,
+      row.rollNumber,
+      row.subject,
+      row.sessionDate,
+      row.status,
+    ]);
   const makeRow = (cells: unknown[], header = false) =>
     `<Row>${cells
       .map(
@@ -2623,7 +2629,25 @@ function downloadAttendanceExcel(rows: AttendanceExportRow[], label: string) {
           `<Cell${header ? ' ss:StyleID="Header"' : ""}><Data ss:Type="String">${xmlEscape(cell)}</Data></Cell>`,
       )
       .join("")}</Row>`;
-  const present = rows.filter((row) => row.status === "Present").length;
+  const dateGroups = new Map<string, AttendanceExportRow[]>();
+  for (const session of sessions) {
+    const key = attendanceDateKey(Number(session.starts_at));
+    dateGroups.set(key, [
+      ...(dateGroups.get(key) || []),
+      ...attendanceRows(session, data),
+    ]);
+  }
+  const allRows = [...dateGroups.values()].flat();
+  const present = allRows.filter((row) => row.status === "Present").length;
+  const dateWorksheets = [...dateGroups.entries()]
+    .map(
+      ([date, rows]) => `
+  <Worksheet ss:Name="${xmlEscape(date)}"><Table>
+    ${makeRow(headers, true)}
+    ${valuesFor(rows).map((row) => makeRow(row)).join("\n")}
+  </Table></Worksheet>`,
+    )
+    .join("");
   const workbook = `<?xml version="1.0"?>
 <?mso-application progid="Excel.Sheet"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
@@ -2632,13 +2656,11 @@ function downloadAttendanceExcel(rows: AttendanceExportRow[], label: string) {
     ${makeRow(["Attendance analysis"], true)}
     ${makeRow(["Selection", label])}
     ${makeRow(["Students marked present", present])}
-    ${makeRow(["Student attendance rows", rows.length])}
+    ${makeRow(["Student attendance rows", allRows.length])}
+    ${makeRow(["Dates included", dateGroups.size])}
     ${makeRow(["Generated", new Date().toLocaleString()])}
   </Table></Worksheet>
-  <Worksheet ss:Name="Attendance"><Table>
-    ${makeRow(headers, true)}
-    ${values.map((row) => makeRow(row)).join("\n")}
-  </Table></Worksheet>
+  ${dateWorksheets}
 </Workbook>`;
   const blob = new Blob(["\ufeff", workbook], {
     type: "application/vnd.ms-excel;charset=utf-8",
@@ -2699,6 +2721,7 @@ function AttendanceAnalysis({ data, refresh }: any) {
     : sectionOptions[0]?.id || "";
   const [period, setPeriod] = useState<"week" | "month" | "quarter">("month");
   const [periodOpen, setPeriodOpen] = useState(false);
+  const [selected, setSelected] = useState<any>(null);
   const toast = useToast();
   const periodDays = period === "week" ? 7 : period === "month" ? 30 : 90;
   const cutoff = Date.now() - periodDays * 86400000;
@@ -2756,8 +2779,12 @@ function AttendanceAnalysis({ data, refresh }: any) {
             variant="secondary"
             disabled={!sessions.length}
             onClick={() => {
-              downloadAttendanceExcel(rows, `${subjectName}-${sectionName}-${periodLabel}`);
-              toast("Attendance Excel report downloaded.");
+              downloadAttendanceExcel(
+                sessions,
+                data,
+                `${subjectName}-${sectionName}-${periodLabel}`,
+              );
+              toast("Date-wise attendance Excel report downloaded.");
             }}
           >
             <Download size={16} /> Download Excel
@@ -2815,39 +2842,53 @@ function AttendanceAnalysis({ data, refresh }: any) {
           <section className="panel attendance-analysis-table">
             <div className="attendance-report-heading">
               <div>
-                <b>Student attendance preview</b>
+                <b>Attendance sessions</b>
                 <small>{sectionName} · {subjectName}</small>
-                <p>{periodLabel} student table · newest date first</p>
+                <p>{periodLabel} sessions · newest date first</p>
               </div>
             </div>
             {sessions.length ? (
               <div className="table-wrap">
-                <table className="attendance-student-table">
+                <table>
                   <thead>
                     <tr>
-                      <th>Group / Section</th>
-                      <th>Student name</th>
-                      <th>Roll number</th>
-                      <th>Subject</th>
                       <th>Date</th>
-                      <th>Attendance</th>
+                      <th>Session</th>
+                      <th>Group / Section</th>
+                      <th>Subject</th>
+                      <th>Present</th>
+                      <th>Class size</th>
+                      <th>Preview</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((row, index) => (
-                      <tr key={`${row.session}-${row.email || row.student}-${row.sessionDate}-${index}`}>
-                        <td><b>{row.classSection}</b></td>
-                        <td><b>{row.student}</b>{row.email && <small>{row.email}</small>}</td>
-                        <td>{row.rollNumber || "—"}</td>
-                        <td>{row.subject}</td>
-                        <td>{row.sessionDate}</td>
-                        <td>
-                          <span className={`status ${row.status === "Present" ? "published" : "draft"}`}>
-                            {row.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {sessions.map((session: any) => {
+                      const sessionRows = attendanceRows(session, data);
+                      const sessionPresent = sessionRows.filter(
+                        (row) => row.status === "Present",
+                      ).length;
+                      return (
+                        <tr key={session.id}>
+                          <td>
+                            <b>{new Date(session.starts_at).toLocaleDateString()}</b>
+                            <small>{new Date(session.starts_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small>
+                          </td>
+                          <td><b>{session.title}</b><small>{session.location_name}</small></td>
+                          <td>{session.class_section_name}</td>
+                          <td>{session.subject_name}</td>
+                          <td>{sessionPresent}</td>
+                          <td>{hasAttendanceRoster(session, data) ? sessionRows.length : "—"}</td>
+                          <td>
+                            <Button
+                              variant="secondary small"
+                              onClick={() => setSelected(session)}
+                            >
+                              <Eye size={14} /> Preview
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -2856,6 +2897,52 @@ function AttendanceAnalysis({ data, refresh }: any) {
             )}
           </section>
         </>
+      )}
+      {selected && (
+        <Modal title={`${selected.title} · Attendance preview`} onClose={() => setSelected(null)} wide>
+          <div className="attendance-report-heading">
+            <div>
+              <b>{selected.class_section_name} · {selected.subject_name}</b>
+              <p>{new Date(selected.starts_at).toLocaleString()} · {selected.location_name}</p>
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table className="attendance-student-table">
+              <thead>
+                <tr>
+                  <th>Group / Section</th>
+                  <th>Student name</th>
+                  <th>Roll number</th>
+                  <th>Subject</th>
+                  <th>Date</th>
+                  <th>Attendance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {attendanceRows(selected, data).map((row, index) => (
+                  <tr key={`${selected.id}-${row.email || row.student}-${index}`}>
+                    <td><b>{row.classSection}</b></td>
+                    <td><b>{row.student}</b>{row.email && <small>{row.email}</small>}</td>
+                    <td>{row.rollNumber || "—"}</td>
+                    <td>{row.subject}</td>
+                    <td>{row.sessionDate}</td>
+                    <td>
+                      <span className={`status ${row.status === "Present" ? "published" : "draft"}`}>
+                        {row.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {!attendanceRows(selected, data).length && (
+            <Empty
+              title="No students in this group"
+              description="Add students to this student group to calculate attendance."
+            />
+          )}
+        </Modal>
       )}
     </>
   );
