@@ -77,6 +77,7 @@ import {
   groupSubjectCode,
   subjectCode,
 } from "../../shared/group-subject";
+import { createXlsxWorkbook, type XlsxSheet } from "../xlsx";
 export default function Admin() {
   const { data, error, loading, refresh } = useData("/admin/overview");
   const location = useLocation();
@@ -2598,13 +2599,6 @@ function attendanceDateKey(value: number) {
 }
 
 function downloadAttendanceExcel(sessions: any[], data: any, label: string) {
-  const xmlEscape = (value: unknown) =>
-    String(value ?? "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&apos;");
   const headers = [
     "Group / Section",
     "Student name",
@@ -2613,22 +2607,6 @@ function downloadAttendanceExcel(sessions: any[], data: any, label: string) {
     "Date",
     "Attendance",
   ];
-  const valuesFor = (rows: AttendanceExportRow[]) =>
-    rows.map((row) => [
-      row.classSection,
-      row.student,
-      row.rollNumber,
-      row.subject,
-      row.sessionDate,
-      row.status,
-    ]);
-  const makeRow = (cells: unknown[], header = false) =>
-    `<Row>${cells
-      .map(
-        (cell) =>
-          `<Cell${header ? ' ss:StyleID="Header"' : ""}><Data ss:Type="String">${xmlEscape(cell)}</Data></Cell>`,
-      )
-      .join("")}</Row>`;
   const dateGroups = new Map<string, AttendanceExportRow[]>();
   for (const session of sessions) {
     const key = attendanceDateKey(Number(session.starts_at));
@@ -2639,36 +2617,43 @@ function downloadAttendanceExcel(sessions: any[], data: any, label: string) {
   }
   const allRows = [...dateGroups.values()].flat();
   const present = allRows.filter((row) => row.status === "Present").length;
-  const dateWorksheets = [...dateGroups.entries()]
-    .map(
-      ([date, rows]) => `
-  <Worksheet ss:Name="${xmlEscape(date)}"><Table>
-    ${makeRow(headers, true)}
-    ${valuesFor(rows).map((row) => makeRow(row)).join("\n")}
-  </Table></Worksheet>`,
-    )
-    .join("");
-  const workbook = `<?xml version="1.0"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
-  <Styles><Style ss:ID="Header"><Font ss:Bold="1"/><Interior ss:Color="#EAF0DE" ss:Pattern="Solid"/></Style></Styles>
-  <Worksheet ss:Name="Summary"><Table>
-    ${makeRow(["Attendance analysis"], true)}
-    ${makeRow(["Selection", label])}
-    ${makeRow(["Students marked present", present])}
-    ${makeRow(["Student attendance rows", allRows.length])}
-    ${makeRow(["Dates included", dateGroups.size])}
-    ${makeRow(["Generated", new Date().toLocaleString()])}
-  </Table></Worksheet>
-  ${dateWorksheets}
-</Workbook>`;
-  const blob = new Blob(["\ufeff", workbook], {
-    type: "application/vnd.ms-excel;charset=utf-8",
+  const sheets: XlsxSheet[] = [
+    {
+      name: "Summary",
+      headerRows: 1,
+      rows: [
+        ["Attendance analysis", ""],
+        ["Selection", label],
+        ["Students marked present", present],
+        ["Student attendance rows", allRows.length],
+        ["Dates included", dateGroups.size],
+        ["Generated", new Date().toLocaleString()],
+      ],
+    },
+    ...[...dateGroups.entries()].map(([date, rows]) => ({
+      name: date,
+      headerRows: 1,
+      rows: [
+        headers,
+        ...rows.map((row) => [
+          row.classSection,
+          row.student,
+          row.rollNumber,
+          row.subject,
+          row.sessionDate,
+          row.status,
+        ]),
+      ],
+    })),
+  ];
+  const workbook = createXlsxWorkbook(sheets);
+  const blob = new Blob([workbook], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `Attendance-${label.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "report"}.xls`;
+  link.download = `Attendance-${label.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "report"}.xlsx`;
   document.body.appendChild(link);
   link.click();
   link.remove();
