@@ -836,7 +836,6 @@ function StudentAttendance({ data, refresh }: { data: any; refresh: () => any })
               <h2>{session.title}</h2>
               <p>{session.location_name}</p>
               <div className="attendance-meta">
-                <span><BookOpen size={15} /> {session.subject_name || "Class attendance"}</span>
                 <span><Users size={15} /> {session.class_section_name || "Your class"}</span>
                 <span>
                   <Clock size={15} /> {new Date(session.starts_at).toLocaleString()}
@@ -2236,8 +2235,6 @@ function Onboarding() {
     groups: Array<{
       id: string;
       name: string;
-      subject_id: string;
-      subject_name: string;
     }>;
   }>("/onboarding/options");
   const groups = onboardingOptions?.groups || [];
@@ -2245,26 +2242,24 @@ function Onboarding() {
     [name, setName] = useState(user.name === "New learner" ? "" : user.name),
     [rollNumber, setRollNumber] = useState(""),
     [groupId, setGroupId] = useState(""),
-    [selected, setSelected] = useState<string[]>(user.interests || []),
     [topics, setTopics] = useState(""),
     [busy, setBusy] = useState(false);
   return (
     <div className="onboarding">
       <Logo />
       <div className="onboarding-progress">
-        {[0, 1, 2, 3].map((i) => (
+        {[0, 1, 2].map((i) => (
           <i key={i} className={i <= step ? "done" : ""} />
         ))}
       </div>
       <main>
         <span className="eyebrow">
-          YOUR NEXT CHAPTER · STEP {step + 1} OF 4
+          YOUR NEXT CHAPTER · STEP {step + 1} OF 3
         </span>
         <h1>
           {
             [
               "Welcome to English Tech.",
-              "What lights you up?",
               "Let’s get a little more curious.",
               "Your learning space is ready.",
             ][step]
@@ -2274,9 +2269,8 @@ function Onboarding() {
           {
             [
               "Tell us your name, roll number, and student group to prepare your learning space.",
-              "Your subject is automatically selected from your student group.",
               "Are there particular learning goals you’d love to achieve?",
-              "Your teacher will bring the right lessons into your space. Until then, make yourself at home.",
+              "Every published subject is ready in your learning space.",
             ][step]
           }
         </p>
@@ -2305,12 +2299,7 @@ function Onboarding() {
             <Field label="Student group">
               <select
                 value={groupId}
-                onChange={(e) => {
-                  const nextGroupId = e.target.value;
-                  const group = groups.find((entry) => entry.id === nextGroupId);
-                  setGroupId(nextGroupId);
-                  setSelected(group?.subject_name ? [group.subject_name] : []);
-                }}
+                onChange={(e) => setGroupId(e.target.value)}
                 disabled={onboardingLoading || !groups.length}
                 required
               >
@@ -2321,11 +2310,7 @@ function Onboarding() {
                   <option value={group.id} key={group.id}>{group.name}</option>
                 ))}
               </select>
-              {groupId && (
-                <small>
-                  {groups.find((group) => group.id === groupId)?.name} includes {groups.find((group) => group.id === groupId)?.subject_name || "the subject assigned by your teacher"}.
-                </small>
-              )}
+              {groupId && <small>Every published subject will be available.</small>}
               {onboardingError && <small className="danger-text">Could not load student groups. Try refreshing this page.</small>}
               {!onboardingLoading && !onboardingError && !groups.length && (
                 <small className="danger-text">No student group is available yet. Ask your teacher to create one.</small>
@@ -2334,24 +2319,6 @@ function Onboarding() {
           </div>
         )}
         {step === 1 && (
-          <div className="onboarding-subjects">
-            {selected.map((s) => (
-              <button
-                type="button"
-                className="selected"
-                disabled
-                key={s}
-              >
-                <CourseArt theme={s.startsWith("UHV") ? "biology" : "english"} />
-                <span>
-                  {s}
-                  <Check size={17} />
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-        {step === 2 && (
           <Field
             label="Learning goals (optional)"
             hint="Separate goals with commas. You can change these later."
@@ -2365,7 +2332,7 @@ function Onboarding() {
             />
           </Field>
         )}
-        {step === 3 && (
+        {step === 2 && (
           <div className="onboarding-ready">
             <Check size={42} />
             <span>A little progress, every day.</span>
@@ -2384,7 +2351,7 @@ function Onboarding() {
             }
             busy={busy}
             onClick={async () => {
-              if (step < 3) {
+              if (step < 2) {
                 setStep((s) => s + 1);
                 return;
               }
@@ -2395,7 +2362,6 @@ function Onboarding() {
                   rollNumber,
                   groupId,
                   interests: [
-                    ...selected,
                     ...topics
                       .split(",")
                       .map((t) => t.trim())
@@ -2413,7 +2379,7 @@ function Onboarding() {
               }
             }}
           >
-            {step === 3 ? "Let’s begin" : "Continue"}
+            {step === 2 ? "Let’s begin" : "Continue"}
             <ArrowRight size={17} />
           </Button>
         </div>

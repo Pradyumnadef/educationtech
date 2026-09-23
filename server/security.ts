@@ -6,8 +6,6 @@ import {
 } from "node:crypto";
 import type { Request, Response, NextFunction } from "express";
 import { one, run, insert, id, now, production, query } from "./db.ts";
-import { groupsWithSubjects } from "./group-subjects.ts";
-import { assignedSubjectMatches } from "../shared/group-subject.ts";
 const SESSION_DURATION_MS = 1000 * 60 * 60 * 24 * 400;
 const SESSION_RENEW_WINDOW_MS = 1000 * 60 * 60 * 24 * 30;
 function sessionCookie(res: Response, token: string) {
@@ -139,19 +137,8 @@ export async function throttle(key: string, limit: number, windowMs: number) {
     );
 }
 export async function accessContext(user: any) {
-  const membershipGroups = await query(
-    `SELECT sg.id,sg.name FROM student_groups sg
-     JOIN group_members gm ON gm.group_id=sg.id
-     WHERE gm.user_id=?`,
-    [user.id],
-  );
   return {
     user,
-    grants: await query(
-      "SELECT * FROM access_grants WHERE user_id=? OR group_id IN (SELECT group_id FROM group_members WHERE user_id=?)",
-      [user.id, user.id],
-    ),
-    groups: await groupsWithSubjects(membershipGroups),
     nodes: await query("SELECT * FROM content"),
   };
 }
@@ -183,6 +170,7 @@ export function canAccess(ctx: any, contentId: string) {
 export function canViewContent(ctx: any, contentId: string) {
   if (ctx.user.status !== "active") return false;
   if (ctx.user.role === "admin") return true;
+  if (!ctx.user.onboarding) return false;
   let node = ctx.nodes.find((entry: any) => entry.id === contentId);
   if (!node) return false;
   let subject = node.kind === "subject" ? node : null;
@@ -196,11 +184,7 @@ export function canViewContent(ctx: any, contentId: string) {
     if (node.kind === "subject") subject = node;
     node = ctx.nodes.find((entry: any) => entry.id === node.parent_id);
   }
-  return (
-    depth < 64 &&
-    !!subject &&
-    ctx.groups.some((group: any) => assignedSubjectMatches(group, subject))
-  );
+  return depth < 64 && !!subject;
 }
 export function publicContent(node: any) {
   const { storage_key, caption_key, resource_key, ...safe } = node;

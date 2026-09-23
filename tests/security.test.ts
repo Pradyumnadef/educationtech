@@ -221,24 +221,21 @@ test("CSRF and unexpected request origins are rejected", async () => {
     403,
   );
 });
-test("student payloads include only the subject mapped to their section", async () => {
+test("students can access every published subject", async () => {
   const r = await request("/learning", "GET", undefined, student);
   assert.equal(r.status, 200);
   assert.ok(r.data.progress.every((p: any) => p.user_id === "user-1"));
   assert.ok(r.data.content.some((c: any) => c.id === "motion-1"));
-  assert.equal(
-    r.data.content.some((c: any) => c.id === "calculus-1"),
-    false,
-  );
+  assert.ok(r.data.content.some((c: any) => c.id === "calculus-1"));
   assert.equal(JSON.stringify(r.data).includes("storage_key"), false);
   assert.equal(
     (await request("/videos/calculus-1", "GET", undefined, student)).status,
-    403,
+    200,
   );
   assert.equal(
     (await request("/search?q=derivative", "GET", undefined, student)).data
-      .length,
-    0,
+      .length > 0,
+    true,
   );
 });
 test("profile input cannot escalate a role or overwrite another user", async () => {
@@ -259,7 +256,7 @@ test("profile input cannot escalate a role or overwrite another user", async () 
   assert.equal(r.data.id, "user-1");
   assert.equal(
     (await request("/videos/calculus-1", "GET", undefined, student)).status,
-    403,
+    200,
   );
 });
 test("invalid OTP fails; a valid OTP is single-use; resend has a cooldown", async () => {
@@ -349,6 +346,12 @@ test("invalid OTP fails; a valid OTP is single-use; resend has a cooldown", asyn
   assert.ok(
     learn.data.content.some((entry: any) => entry.id === "uhv"),
   );
+  assert.ok(
+    learn.data.content.some((entry: any) => entry.id === "english"),
+  );
+  assert.ok(
+    learn.data.content.some((entry: any) => entry.id === "calculus-1"),
+  );
   assert.equal(
     learn.data.content.some((entry: any) => entry.id === "organic"),
     true,
@@ -379,7 +382,7 @@ test("OTP attempt limit cannot be bypassed with a correct code after five failur
     400,
   );
 });
-test("legacy content grants do not override the mandatory section subject", async () => {
+test("legacy content grants do not restrict universal subject access", async () => {
   assert.equal(
     (await request("/videos/motion-1", "GET", undefined, student)).status,
     200,
@@ -731,29 +734,11 @@ test("nested content folders inherit access, reject cycles, and hide drafts", as
   );
 });
 test("attendance enforces time, GPS radius, accuracy, ownership, and one check-in", async () => {
-  const mismatched = await request(
-    "/admin/attendance",
-    "POST",
-    {
-      title: "Wrong section subject",
-      subjectId: "english",
-      groupId: "group-1",
-      locationName: "Test campus",
-      latitude: 20,
-      longitude: 85,
-      radiusM: 50,
-      startsAt: Date.now() - 60000,
-      endsAt: Date.now() + 600000,
-    },
-    teacher,
-  );
-  assert.equal(mismatched.status, 400);
   const created = await request(
     "/admin/attendance",
     "POST",
     {
       title: "Secure attendance",
-      subjectId: "uhv",
       groupId: "group-1",
       locationName: "Test campus",
       latitude: 20,
@@ -765,7 +750,7 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
     teacher,
   );
   assert.equal(created.status, 200, JSON.stringify(created.data));
-  assert.equal(created.data.subject_name, "UHV (Universal Human Values)");
+  assert.equal(created.data.subject_name, undefined);
   assert.equal(created.data.class_section_name, "Section-A");
   const sessionId = created.data.id;
   const outsiderChallenge = await request("/auth/otp/send", "POST", {
@@ -897,7 +882,6 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
     "POST",
     {
       title: "Expired attendance",
-      subjectId: "uhv",
       groupId: "group-1",
       locationName: "Test campus",
       latitude: 20,
@@ -934,7 +918,6 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
         "POST",
         {
           title: "Not allowed",
-          subjectId: "uhv",
           groupId: "group-1",
           locationName: "Campus",
           latitude: 20,
@@ -1272,7 +1255,7 @@ test("deactivation invalidates live sessions immediately", async () => {
     401,
   );
 });
-test("renamed and newly created groups keep their assigned subject", async () => {
+test("renamed and newly created groups support registration and attendance", async () => {
   const send = await request("/auth/otp/send", "POST", {
     identifier: "group-learner@test.local",
     purpose: "signup",
@@ -1288,12 +1271,10 @@ test("renamed and newly created groups keep their assigned subject", async () =>
     {
       name: "Section-B",
       description: "ETW students.",
-      subjectId: "english",
     },
     teacher,
   );
   assert.equal(group.status, 200);
-  assert.equal(group.data.subject_id, "english");
   assert.equal(
     (
       await request(
@@ -1302,7 +1283,6 @@ test("renamed and newly created groups keep their assigned subject", async () =>
         {
           name: "Second Year",
           description: "Renamed ETW students.",
-          subjectId: "english",
         },
         teacher,
       )
@@ -1314,11 +1294,6 @@ test("renamed and newly created groups keep their assigned subject", async () =>
     (entry: any) => entry.id === group.data.id,
   );
   assert.equal(renamed.name, "Second Year");
-  assert.equal(renamed.subject_id, "english");
-  assert.equal(
-    (await request("/videos/calculus-1", "GET", undefined, learner)).status,
-    403,
-  );
   const completed = await request(
     "/profile",
     "PATCH",
@@ -1338,7 +1313,6 @@ test("renamed and newly created groups keep their assigned subject", async () =>
     "POST",
     {
       title: "Second Year attendance",
-      subjectId: "english",
       groupId: group.data.id,
       locationName: "Test campus",
       latitude: 20,
@@ -1359,7 +1333,6 @@ test("renamed and newly created groups keep their assigned subject", async () =>
         {
           name: "Second Year ETW",
           description: "Renamed again after attendance was created.",
-          subjectId: "english",
         },
         teacher,
       )
@@ -1379,7 +1352,7 @@ test("renamed and newly created groups keep their assigned subject", async () =>
   );
   assert.equal(
     (await request("/videos/motion-1", "GET", undefined, learner)).status,
-    403,
+    200,
   );
   await request(
     `/admin/groups/${group.data.id}/members`,
@@ -1389,7 +1362,7 @@ test("renamed and newly created groups keep their assigned subject", async () =>
   );
   assert.equal(
     (await request("/videos/calculus-1", "GET", undefined, learner)).status,
-    403,
+    200,
   );
   await request(
     `/admin/attendance/${attendance.data.id}`,

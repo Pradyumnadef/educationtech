@@ -72,7 +72,6 @@ import {
 } from "../lib";
 import { ActivityChart, Stat, Profile } from "./Student";
 import { createXlsxWorkbook, type XlsxSheet } from "../xlsx";
-import { assignedSubjectMatches } from "../../shared/group-subject";
 export default function Admin() {
   const { data, error, loading, refresh } = useData("/admin/overview");
   const location = useLocation();
@@ -664,9 +663,6 @@ function Groups({ data, refresh }: any) {
     [confirm, setConfirm] = useState<any>(null),
     [busy, setBusy] = useState(false),
     toast = useToast();
-  const subjects = (data.content || []).filter(
-    (item: Item) => item.kind === "subject",
-  );
   return (
     <>
       <Heading
@@ -691,7 +687,6 @@ function Groups({ data, refresh }: any) {
             <h2>{g.name}</h2>
             <p>{g.description || "A space for shared curiosity."}</p>
             <div className="group-counts">
-              {g.subject_name && <span>{g.subject_name}</span>}
               <span>
                 {data.members.filter((m: any) => m.group_id === g.id).length}{" "}
                 learners
@@ -769,22 +764,6 @@ function Groups({ data, refresh }: any) {
                 defaultValue={selected?.description}
                 maxLength={1000}
               />
-            </Field>
-            <Field label="Subject">
-              <select
-                name="subjectId"
-                defaultValue={selected?.subject_id || ""}
-                required
-              >
-                <option value="" disabled>
-                  Choose the subject for this group
-                </option>
-                {subjects.map((subject: Item) => (
-                  <option value={subject.id} key={subject.id}>
-                    {subject.name}
-                  </option>
-                ))}
-              </select>
             </Field>
             <Button type="submit" busy={busy}>
               Save group
@@ -2227,7 +2206,6 @@ function UploadedFile({ file, label, onRemove }: any) {
   );
 }
 function Attendance({ data, refresh }: any) {
-  const subjects = data.content.filter((item: Item) => item.kind === "subject");
   const studentGroups = data.groups || [];
   const synergyCampus = {
     locationName: "Synergy Institute of Technology, Bhubaneswar",
@@ -2243,7 +2221,6 @@ function Attendance({ data, refresh }: any) {
   const emptyForm = () => ({
     title: "Class attendance",
     groupId: studentGroups[0]?.id || "",
-    subjectId: studentGroups[0]?.subject_id || "",
     ...synergyCampus,
     radiusM: 25,
     startsAt: localDateTime(Date.now()),
@@ -2256,14 +2233,6 @@ function Attendance({ data, refresh }: any) {
   const [selected, setSelected] = useState<any>(null);
   const [removing, setRemoving] = useState<any>(null);
   const toast = useToast();
-  const selectedGroup = studentGroups.find(
-    (group: any) => group.id === form.groupId,
-  );
-  const matchingSubjects = selectedGroup?.subject_id
-    ? subjects.filter((subject: Item) =>
-        assignedSubjectMatches(selectedGroup, subject),
-      )
-    : [];
   const sessions = (data.attendance || []).filter(
     (session: any) =>
       session.status === "open" &&
@@ -2300,7 +2269,7 @@ function Attendance({ data, refresh }: any) {
         description="Open a timed attendance session and allow check-in only within your chosen campus radius."
       >
         <Button
-          disabled={!subjects.length || !studentGroups.length}
+          disabled={!studentGroups.length}
           onClick={() => setCreating(true)}
         >
           <Plus size={16} /> New attendance
@@ -2336,7 +2305,6 @@ function Attendance({ data, refresh }: any) {
               <h2>{session.title}</h2>
               <p>{session.location_name}</p>
               <div className="attendance-meta">
-                <span><BookOpen size={15} /> {session.subject_name || "Unassigned subject"}</span>
                 <span><Users size={15} /> {session.class_section_name || "All students"}</span>
                 <span><Clock size={15} /> {new Date(session.starts_at).toLocaleString()}</span>
                 <span><Target size={15} /> {session.radius_m} metre radius</span>
@@ -2373,14 +2341,12 @@ function Attendance({ data, refresh }: any) {
         <Empty
           title="Create your first attendance session"
           description={
-            !subjects.length
-              ? "Create a subject before opening attendance."
-              : !studentGroups.length
-                ? "Create a student group before opening attendance."
-                : "Choose a subject and student group, then set the attendance location and time."
+            !studentGroups.length
+              ? "Create a student group before opening attendance."
+              : "Choose a student group, then set the attendance location and time."
           }
         >
-          <Button disabled={!subjects.length || !studentGroups.length} onClick={() => setCreating(true)}><Plus size={16} /> New attendance</Button>
+          <Button disabled={!studentGroups.length} onClick={() => setCreating(true)}><Plus size={16} /> New attendance</Button>
         </Empty>
       )}
       {creating && (
@@ -2418,32 +2384,22 @@ function Attendance({ data, refresh }: any) {
                 <input required maxLength={200} value={form.locationName} onChange={(event) => setForm({ ...form, locationName: event.target.value })} />
               </Field>
             </div>
-            <div className="grid two">
-              <Field label="Subject">
-                <select required value={form.subjectId} onChange={(event) => setForm({ ...form, subjectId: event.target.value })}>
-                  <option value="" disabled>Choose subject</option>
-                  {matchingSubjects.map((subject: Item) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}
-                </select>
-              </Field>
-              <Field label="Student group">
+            <Field label="Student group">
                 <select
                   required
                   value={form.groupId}
                   onChange={(event) => {
                     const groupId = event.target.value;
-                    const group = studentGroups.find((entry: any) => entry.id === groupId);
                     setForm({
                       ...form,
                       groupId,
-                      subjectId: group?.subject_id || "",
                     });
                   }}
                 >
                   <option value="" disabled>Choose student group</option>
                   {studentGroups.map((group: any) => <option value={group.id} key={group.id}>{group.name}</option>)}
                 </select>
-              </Field>
-            </div>
+            </Field>
             <div className="attendance-location-capture">
               <div>
                 <strong>Attendance centre</strong>
@@ -2528,7 +2484,6 @@ function Attendance({ data, refresh }: any) {
 }
 
 type AttendanceExportRow = {
-  subject: string;
   classSection: string;
   session: string;
   sessionDate: string;
@@ -2582,7 +2537,6 @@ function attendanceRows(session: any, data: any): AttendanceExportRow[] {
       (entry: any) => entry.user_id === student.id,
     );
     return {
-      subject: session.subject_name || "Unassigned subject",
       classSection: session.class_section_name || "All students",
       session: session.title,
       sessionDate: new Date(session.starts_at).toLocaleString(),
@@ -2607,7 +2561,6 @@ function downloadAttendanceExcel(sessions: any[], data: any, label: string) {
     "Group / Section",
     "Student name",
     "Roll number",
-    "Subject",
     "Date",
     "Attendance",
   ];
@@ -2643,7 +2596,6 @@ function downloadAttendanceExcel(sessions: any[], data: any, label: string) {
           row.classSection,
           row.student,
           row.rollNumber,
-          row.subject,
           row.sessionDate,
           row.status,
         ]),
@@ -2669,28 +2621,9 @@ function AttendanceAnalysis({ data, refresh }: any) {
     (session: any) =>
       session.status === "closed" || Date.now() > Number(session.ends_at),
   );
-  const subjectOptions = Array.from(
-    new Map(
-      archivedSessions.map((session: any) => [
-        session.subject_id || "unassigned",
-        {
-          id: session.subject_id || "unassigned",
-          name: session.subject_name || "Unassigned subject",
-        },
-      ]),
-    ).values(),
-  ) as Array<{ id: string; name: string }>;
-  const [subjectId, setSubjectId] = useState("");
-  const activeSubjectId = subjectOptions.some((subject) => subject.id === subjectId)
-    ? subjectId
-    : subjectOptions[0]?.id || "";
   const sectionOptions = Array.from(
     new Map(
       archivedSessions
-        .filter(
-          (session: any) =>
-            (session.subject_id || "unassigned") === activeSubjectId,
-        )
         .map((session: any) => [
           session.class_section_id || "unassigned",
           {
@@ -2713,7 +2646,6 @@ function AttendanceAnalysis({ data, refresh }: any) {
   const sessions = archivedSessions
     .filter(
       (session: any) =>
-        (session.subject_id || "unassigned") === activeSubjectId &&
         (session.class_section_id || "unassigned") === activeSectionId &&
         Number(session.starts_at) >= cutoff,
     )
@@ -2728,8 +2660,6 @@ function AttendanceAnalysis({ data, refresh }: any) {
   const ratedPresent = ratedRows.filter((row) => row.status === "Present").length;
   const periodLabel =
     period === "week" ? "Weekly" : period === "month" ? "Monthly" : "Quarterly";
-  const subjectName =
-    subjectOptions.find((subject) => subject.id === activeSubjectId)?.name || "Attendance";
   const sectionName =
     sectionOptions.find((section) => section.id === activeSectionId)?.name || "All students";
   return (
@@ -2737,7 +2667,7 @@ function AttendanceAnalysis({ data, refresh }: any) {
       <Heading
         eyebrow="ATTENDANCE ANALYSIS"
         title="Attendance records, clearly organised."
-        description="Review closed sessions by subject, student group, and reporting period."
+        description="Review closed sessions by student group and reporting period."
       >
         <div className="attendance-analysis-actions">
           <button
@@ -2767,7 +2697,7 @@ function AttendanceAnalysis({ data, refresh }: any) {
               downloadAttendanceExcel(
                 sessions,
                 data,
-                `${subjectName}-${sectionName}-${periodLabel}`,
+                `${sectionName}-${periodLabel}`,
               );
               toast("Date-wise attendance Excel report downloaded.");
             }}
@@ -2783,23 +2713,6 @@ function AttendanceAnalysis({ data, refresh }: any) {
         />
       ) : (
         <>
-          <div className="attendance-analysis-tabs" role="tablist" aria-label="Subjects">
-            {subjectOptions.map((subject) => (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeSubjectId === subject.id}
-                className={activeSubjectId === subject.id ? "active" : ""}
-                key={subject.id}
-                onClick={() => {
-                  setSubjectId(subject.id);
-                  setSectionId("");
-                }}
-              >
-                <BookOpen size={16} /> {subject.name}
-              </button>
-            ))}
-          </div>
           <div className="attendance-section-tabs" role="tablist" aria-label="Student groups">
             <span>Student group</span>
             {sectionOptions.map((section) => (
@@ -2828,7 +2741,7 @@ function AttendanceAnalysis({ data, refresh }: any) {
             <div className="attendance-report-heading">
               <div>
                 <b>Attendance sessions</b>
-                <small>{sectionName} · {subjectName}</small>
+                <small>{sectionName}</small>
                 <p>{periodLabel} sessions · newest date first</p>
               </div>
             </div>
@@ -2840,7 +2753,6 @@ function AttendanceAnalysis({ data, refresh }: any) {
                       <th>Date</th>
                       <th>Session</th>
                       <th>Group / Section</th>
-                      <th>Subject</th>
                       <th>Present</th>
                       <th>Class size</th>
                       <th>Preview</th>
@@ -2860,7 +2772,6 @@ function AttendanceAnalysis({ data, refresh }: any) {
                           </td>
                           <td><b>{session.title}</b><small>{session.location_name}</small></td>
                           <td>{session.class_section_name}</td>
-                          <td>{session.subject_name}</td>
                           <td>{sessionPresent}</td>
                           <td>{hasAttendanceRoster(session, data) ? sessionRows.length : "—"}</td>
                           <td>
@@ -2887,7 +2798,7 @@ function AttendanceAnalysis({ data, refresh }: any) {
         <Modal title={`${selected.title} · Attendance preview`} onClose={() => setSelected(null)} wide>
           <div className="attendance-report-heading">
             <div>
-              <b>{selected.class_section_name} · {selected.subject_name}</b>
+              <b>{selected.class_section_name}</b>
               <p>{new Date(selected.starts_at).toLocaleString()} · {selected.location_name}</p>
             </div>
           </div>
@@ -2898,7 +2809,6 @@ function AttendanceAnalysis({ data, refresh }: any) {
                   <th>Group / Section</th>
                   <th>Student name</th>
                   <th>Roll number</th>
-                  <th>Subject</th>
                   <th>Date</th>
                   <th>Attendance</th>
                 </tr>
@@ -2909,7 +2819,6 @@ function AttendanceAnalysis({ data, refresh }: any) {
                     <td><b>{row.classSection}</b></td>
                     <td><b>{row.student}</b>{row.email && <small>{row.email}</small>}</td>
                     <td>{row.rollNumber || "—"}</td>
-                    <td>{row.subject}</td>
                     <td>{row.sessionDate}</td>
                     <td>
                       <span className={`status ${row.status === "Present" ? "published" : "draft"}`}>
