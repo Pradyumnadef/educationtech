@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useRef, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Plus,
   Search,
@@ -824,6 +824,7 @@ function Groups({ data, refresh }: any) {
 }
 function ContentDrive({ data, refresh }: any) {
   const location = useLocation();
+  const navigate = useNavigate();
   const currentId = new URLSearchParams(location.search).get("folder");
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -831,6 +832,12 @@ function ContentDrive({ data, refresh }: any) {
   const [editor, setEditor] = useState<any>(null);
   const [preview, setPreview] = useState<any>(null);
   const [confirm, setConfirm] = useState<Item | null>(null);
+  const [folderImport, setFolderImport] = useState<{
+    active: boolean;
+    progress: number;
+    label: string;
+  }>({ active: false, progress: 0, label: "" });
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
   const items: Item[] = data.content;
   const current = currentId
@@ -888,6 +895,92 @@ function ContentDrive({ data, refresh }: any) {
       toast(error.message, "error");
     }
   };
+  const uploadFolder = async (selectedFiles: File[]) => {
+    if (!current || !selectedFiles.length) return;
+    if (selectedFiles.length > 100) {
+      toast("Choose a folder containing no more than 100 files.", "error");
+      return;
+    }
+    const supported = new Set([
+      "mp4",
+      "webm",
+      "mov",
+      "pdf",
+      "doc",
+      "docx",
+      "xls",
+      "xlsx",
+      "ppt",
+      "pptx",
+      "txt",
+      "csv",
+    ]);
+    const unsupported = selectedFiles.find(
+      (file) =>
+        !supported.has(file.name.split(".").pop()?.toLowerCase() || ""),
+    );
+    if (unsupported) {
+      toast(
+        `“${unsupported.name}” is not a supported video or document. Remove it from the folder and try again.`,
+        "error",
+      );
+      return;
+    }
+    setFolderImport({ active: true, progress: 0, label: "Preparing folder…" });
+    try {
+      const entries: Array<{ path: string; uploadId: string }> = [];
+      for (let index = 0; index < selectedFiles.length; index++) {
+        const file = selectedFiles[index];
+        setFolderImport({
+          active: true,
+          progress: Math.round((index / selectedFiles.length) * 100),
+          label: `Uploading ${file.name} (${index + 1} of ${selectedFiles.length})`,
+        });
+        const upload = await uploadFile(file, (fileProgress) =>
+          setFolderImport({
+            active: true,
+            progress: Math.round(
+              ((index + fileProgress / 100) / selectedFiles.length) * 100,
+            ),
+            label: `Uploading ${file.name} (${index + 1} of ${selectedFiles.length})`,
+          }),
+        );
+        let state = upload.state;
+        for (let attempt = 0; state !== "ready" && attempt < 30; attempt++) {
+          if (state === "rejected")
+            throw new Error(`“${file.name}” failed its security scan.`);
+          setFolderImport((current) => ({
+            ...current,
+            label: `Checking ${file.name}…`,
+          }));
+          await new Promise((resolve) => window.setTimeout(resolve, 1000));
+          state = (await api(`/storage/status/${upload.id}`)).state;
+        }
+        if (state !== "ready")
+          throw new Error(
+            `“${file.name}” is still being checked. Please try the folder upload again shortly.`,
+          );
+        entries.push({
+          path: file.webkitRelativePath || file.name,
+          uploadId: upload.id,
+        });
+      }
+      setFolderImport({ active: true, progress: 100, label: "Creating folders…" });
+      const imported = await post("/admin/content/folder-import", {
+        parentId: current.id,
+        entries,
+      });
+      await refresh();
+      toast(
+        `${imported.name} uploaded with ${imported.fileCount} ${imported.fileCount === 1 ? "file" : "files"}.`,
+      );
+      navigate(`/admin/library?folder=${encodeURIComponent(imported.id)}`);
+    } catch (error: any) {
+      toast(error.message, "error");
+    } finally {
+      setFolderImport({ active: false, progress: 0, label: "" });
+    }
+  };
   return (
     <>
       <Heading
@@ -923,6 +1016,27 @@ function ContentDrive({ data, refresh }: any) {
             >
               <Upload size={17} /> Upload
             </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={folderImport.active}
+              onClick={() => folderInputRef.current?.click()}
+            >
+              <FolderPlus size={17} /> Upload folder
+            </Button>
+            <input
+              ref={folderInputRef}
+              type="file"
+              multiple
+              hidden
+              disabled={folderImport.active}
+              {...({ webkitdirectory: "", directory: "" } as any)}
+              onChange={(event) => {
+                const files = Array.from(event.target.files || []);
+                event.target.value = "";
+                void uploadFolder(files);
+              }}
+            />
           </div>
         )}
       </Heading>
@@ -989,6 +1103,16 @@ function ContentDrive({ data, refresh }: any) {
         </div>
         <span>{folders.length + uploadedItems.length} items</span>
       </div>
+      {folderImport.active && (
+        <div className="upload-progress-panel" role="status">
+          <div className="progress-track">
+            <i style={{ width: `${folderImport.progress}%` }} />
+          </div>
+          <p className="muted">
+            {folderImport.label} · {folderImport.progress}%
+          </p>
+        </div>
+      )}
       {!!(folders.length || uploadedItems.length) && (
         <div className="drive-explorer-list admin-drive-list" role="list">
           {sortedFolders.map((folder) => (

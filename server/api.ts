@@ -1044,6 +1044,149 @@ api.get("/admin/content/:id", async (req, res) => {
     assets,
   });
 });
+api.post("/admin/content/folder-import", async (req, res) => {
+  const body = z
+    .object({
+      parentId: z.string().trim().min(1).max(200),
+      entries: z
+        .array(
+          z.object({
+            path: z.string().trim().min(3).max(1000),
+            uploadId: z.uuid(),
+          }),
+        )
+        .min(1)
+        .max(100),
+    })
+    .parse(req.body);
+  const parent = await one(
+    "SELECT id,kind,status FROM content WHERE id=? AND kind IN ('subject','folder')",
+    [body.parentId],
+  );
+  if (!parent) bad("Choose an available subject or folder.");
+
+  const normalizedEntries = body.entries.map((entry) => {
+    const parts = entry.path
+      .replace(/\\/g, "/")
+      .split("/")
+      .filter(Boolean);
+    if (
+      parts.length < 2 ||
+      parts.some(
+        (part) =>
+          part === "." ||
+          part === ".." ||
+          part.length > 200 ||
+          /[\u0000-\u001f]/.test(part),
+      )
+    )
+      bad("The selected folder contains an invalid file path.");
+    return { ...entry, parts };
+  });
+  const rootName = normalizedEntries[0].parts[0];
+  if (normalizedEntries.some((entry) => entry.parts[0] !== rootName))
+    bad("Choose one folder at a time.");
+  if (
+    new Set(normalizedEntries.map((entry) => entry.parts.join("/"))).size !==
+    normalizedEntries.length
+  )
+    bad("The selected folder contains duplicate file paths.");
+
+  const uploads = new Map<string, any>();
+  for (const entry of normalizedEntries) {
+    const upload = await one(
+      "SELECT * FROM uploads WHERE id=? AND owner_id=? AND state='ready'",
+      [entry.uploadId, uid(req)],
+    );
+    if (
+      !upload ||
+      (!upload.mime.startsWith("video/") && !documentMimes.has(upload.mime))
+    )
+      bad("An uploaded file is invalid or still processing.");
+    uploads.set(entry.uploadId, upload);
+  }
+
+  const folders = new Map<string, string>();
+  const createContent = async (record: Record<string, any>) => {
+    const contentId = id();
+    await insert("content", {
+      id: contentId,
+      description: "",
+      thumbnail: "english",
+      status: "published",
+      public: 0,
+      duration: 0,
+      tags: "[]",
+      notes: "",
+      storage_key: "",
+      caption_key: "",
+      resource_key: "",
+      publish_at: null,
+      created_at: now(),
+      updated_at: now(),
+      ...record,
+    });
+    return contentId;
+  };
+
+  let rootId = "";
+  try {
+    rootId = await createContent({
+      kind: "folder",
+      parent_id: parent.id,
+      name: rootName,
+    });
+    folders.set(rootName, rootId);
+    let fileCount = 0;
+    for (const entry of normalizedEntries) {
+      let folderId = rootId;
+      for (let index = 1; index < entry.parts.length - 1; index++) {
+        const folderPath = entry.parts.slice(0, index + 1).join("/");
+        const existingId = folders.get(folderPath);
+        if (existingId) {
+          folderId = existingId;
+          continue;
+        }
+        folderId = await createContent({
+          kind: "folder",
+          parent_id: folderId,
+          name: entry.parts[index],
+        });
+        folders.set(folderPath, folderId);
+      }
+      const upload = uploads.get(entry.uploadId);
+      const assetType = upload.mime.startsWith("video/") ? "video" : "file";
+      const materialId = await createContent({
+        kind: "video",
+        parent_id: folderId,
+        name: upload.filename,
+        storage_key: assetType === "video" ? upload.storage_key : "",
+        resource_key: assetType === "file" ? upload.storage_key : "",
+      });
+      await insert("content_assets", {
+        id: id(),
+        content_id: materialId,
+        upload_id: upload.id,
+        asset_type: assetType,
+        sort_order: 0,
+      });
+      fileCount += 1;
+    }
+    await audit(
+      uid(req),
+      "content.folder-import",
+      rootId,
+      `${rootName}: ${fileCount} files`,
+    );
+    res.json({ id: rootId, name: rootName, fileCount });
+  } catch (error) {
+    if (rootId) await run("DELETE FROM content WHERE id=?", [rootId]);
+    await cleanupUploadsIfUnreferenced(
+      normalizedEntries.map((entry) => entry.uploadId),
+    );
+    throw error;
+  }
+});
 api.post("/admin/content", async (req, res) => {
   const b = contentSchema.parse(req.body);
   await validateContent(b);

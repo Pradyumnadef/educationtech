@@ -1093,6 +1093,59 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
     "file",
     "video",
   ]);
+  const folderImport = await request(
+    "/admin/content/folder-import",
+    "POST",
+    {
+      parentId: "uhv",
+      entries: [
+        {
+          path: "Communication Course/Week 1/format-fixture.mp4",
+          uploadId: prep.data.id,
+        },
+        {
+          path: "Communication Course/lesson-notes.pdf",
+          uploadId: documentPrep.data.id,
+        },
+      ],
+    },
+    teacher,
+  );
+  assert.equal(folderImport.status, 200, JSON.stringify(folderImport.data));
+  assert.equal(folderImport.data.name, "Communication Course");
+  assert.equal(folderImport.data.fileCount, 2);
+  const importedOverview = await request(
+    "/admin/overview",
+    "GET",
+    undefined,
+    teacher,
+  );
+  const importedRoot = importedOverview.data.content.find(
+    (item: any) => item.id === folderImport.data.id,
+  );
+  const importedWeek = importedOverview.data.content.find(
+    (item: any) =>
+      item.parent_id === importedRoot.id && item.name === "Week 1",
+  );
+  assert.equal(importedRoot.name, "Communication Course");
+  assert.equal(importedRoot.parent_id, "uhv");
+  assert.ok(importedWeek);
+  assert.ok(
+    importedOverview.data.content.some(
+      (item: any) =>
+        item.parent_id === importedWeek.id &&
+        item.name === "format-fixture.mp4" &&
+        item.video_count === 1,
+    ),
+  );
+  assert.ok(
+    importedOverview.data.content.some(
+      (item: any) =>
+        item.parent_id === importedRoot.id &&
+        item.name === "lesson-notes.pdf" &&
+        item.file_count === 1,
+    ),
+  );
   const overviewMaterial = (
     await request("/admin/overview", "GET", undefined, teacher)
   ).data.content.find((item: any) => item.id === "motion-4");
@@ -1181,6 +1234,17 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
     200,
   );
   assert.equal((await request("/storage/media/motion-4/video")).status, 401);
+  assert.equal(
+    (
+      await request(
+        `/admin/content/${folderImport.data.id}`,
+        "DELETE",
+        undefined,
+        teacher,
+      )
+    ).status,
+    200,
+  );
   assert.equal(
     (
       await request(
