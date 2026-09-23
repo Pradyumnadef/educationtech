@@ -64,7 +64,6 @@ import {
   contentFolderSize,
   sortDriveEntries,
 } from "../lib";
-import { assignedSubjectLabel } from "../../shared/group-subject";
 export function ActivityChart({ events = [] }: { events: any[] }) {
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
@@ -2233,9 +2232,14 @@ function Onboarding() {
     data: onboardingOptions,
     error: onboardingError,
     loading: onboardingLoading,
-  } = useData<{ groups: Array<{ id: string; name: string }> }>(
-    "/onboarding/options",
-  );
+  } = useData<{
+    groups: Array<{
+      id: string;
+      name: string;
+      subject_id: string;
+      subject_name: string;
+    }>;
+  }>("/onboarding/options");
   const groups = onboardingOptions?.groups || [];
   const [step, setStep] = useState(0),
     [name, setName] = useState(user.name === "New learner" ? "" : user.name),
@@ -2304,15 +2308,8 @@ function Onboarding() {
                 onChange={(e) => {
                   const nextGroupId = e.target.value;
                   const group = groups.find((entry) => entry.id === nextGroupId);
-                  const assigned = assignedSubjectLabel(group?.name || "");
                   setGroupId(nextGroupId);
-                  setSelected(
-                    assigned === "UHV"
-                      ? ["UHV (Universal Human Values)"]
-                      : assigned === "ETW"
-                        ? ["ETW (English for Technical Writing)"]
-                        : [],
-                  );
+                  setSelected(group?.subject_name ? [group.subject_name] : []);
                 }}
                 disabled={onboardingLoading || !groups.length}
                 required
@@ -2326,7 +2323,7 @@ function Onboarding() {
               </select>
               {groupId && (
                 <small>
-                  {groups.find((group) => group.id === groupId)?.name} includes {assignedSubjectLabel(groups.find((group) => group.id === groupId)?.name || "")}.
+                  {groups.find((group) => group.id === groupId)?.name} includes {groups.find((group) => group.id === groupId)?.subject_name || "the subject assigned by your teacher"}.
                 </small>
               )}
               {onboardingError && <small className="danger-text">Could not load student groups. Try refreshing this page.</small>}

@@ -29,3 +29,12 @@ export function assignedSubjectLabel(groupName: string) {
   const code = groupSubjectCode(groupName);
   return code === "uhv" ? "UHV" : code === "etw" ? "ETW" : "";
 }
+
+export function assignedSubjectMatches(
+  group: { subject_id?: string; subject_name?: string },
+  subject: { id: string; name: string },
+) {
+  if (group.subject_id === subject.id) return true;
+  const assignedCode = subjectCode(group.subject_name || "");
+  return assignedCode !== null && assignedCode === subjectCode(subject.name);
+}

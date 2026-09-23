@@ -12,10 +12,8 @@ import {
   throttle,
 } from "./security.ts";
 import { cleanupUploadsIfUnreferenced } from "./storage.ts";
-import {
-  groupMatchesSubject,
-  groupSubjectCode,
-} from "../shared/group-subject.ts";
+import { groupsWithSubjects, saveGroupSubject } from "./group-subjects.ts";
+import { assignedSubjectMatches } from "../shared/group-subject.ts";
 export const api = Router();
 const uid = (req: any) => req.user.id;
 const text = z.string().trim().min(1).max(200);
@@ -100,7 +98,7 @@ const contentSchema = z.object({
   file_upload_ids: z.array(z.uuid()).max(30).optional(),
   publish_at: z.number().nullable().default(null),
 });
-function bad(message: string, status = 400) {
+function bad(message: string, status = 400): never {
   throw Object.assign(new Error(message), { status });
 }
 async function resolveContentAssets(
@@ -289,11 +287,7 @@ api.get("/learning", async (req, res) => {
         session.status === "open" &&
         Number(session.ends_at) >= now() &&
         (!session.class_section_id ||
-          attendanceGroups.has(session.class_section_id)) &&
-        groupMatchesSubject(
-          session.class_section_name || "",
-          session.subject_name || "",
-        ),
+          attendanceGroups.has(session.class_section_id)),
     )
     .sort((a: any, b: any) => Number(a.starts_at) - Number(b.starts_at))
     .map((session: any) => {
@@ -352,13 +346,6 @@ api.post("/attendance/:id/check-in", async (req, res) => {
   ]);
   const attendance = attendanceRow ? JSON.parse(attendanceRow.value) : null;
   if (!attendance) bad("This attendance session was not found.", 404);
-  if (
-    !groupMatchesSubject(
-      attendance.class_section_name || "",
-      attendance.subject_name || "",
-    )
-  )
-    bad("This attendance session does not match the student group subject.", 403);
   if (attendance.class_section_id) {
     const membership = await one(
       "SELECT id FROM group_members WHERE group_id=? AND user_id=?",
@@ -611,9 +598,7 @@ api.post("/progress/:id", async (req, res) => {
 });
 api.get("/onboarding/options", async (_req, res) => {
   res.json({
-    groups: (
-      await query("SELECT id,name FROM student_groups ORDER BY name")
-    ).filter((group: any) => groupSubjectCode(group.name)),
+    groups: await groupsWithSubjects(),
   });
 });
 api.patch("/profile", async (req, res) => {
@@ -638,12 +623,12 @@ api.patch("/profile", async (req, res) => {
       bad("Registration details are already complete. Ask your teacher to change your group.", 409);
     if (!b.groupId || !b.rollNumber)
       bad("Name, student group, and roll number are required.");
-    const group = await one("SELECT id,name FROM student_groups WHERE id=?", [
-      b.groupId,
-    ]);
+    const group = (await groupsWithSubjects()).find(
+      (entry: any) => entry.id === b.groupId,
+    );
     if (!group) bad("Choose an available student group.");
-    if (!groupSubjectCode(group.name))
-      bad("Choose Section-A or Section-B as your student group.");
+    if (!group.subject_id)
+      bad("This student group needs a subject. Ask your teacher to update it.");
     const duplicate = (await savedStudentProfiles()).find(
       (profile: any) =>
         profile.user_id !== user.id &&
@@ -733,7 +718,7 @@ api.get("/admin/overview", async (_req, res) => {
       assets,
     };
   });
-  const groups = await query("SELECT * FROM student_groups ORDER BY name");
+  const groups = await groupsWithSubjects();
   const members = await query("SELECT * FROM group_members");
   const studentProfiles = await savedStudentProfiles();
   for (const student of students) {
@@ -857,14 +842,15 @@ api.post("/admin/attendance", async (req, res) => {
     [body.subjectId],
   );
   if (!subject) bad("Choose an available subject.");
-  const classSection = await one(
-    "SELECT id,name FROM student_groups WHERE id=?",
-    [body.groupId],
+  const classSection = (await groupsWithSubjects()).find(
+    (entry: any) => entry.id === body.groupId,
   );
   if (!classSection) bad("Choose an available student group.");
-  if (!groupMatchesSubject(classSection.name, subject.name))
+  if (!classSection.subject_id)
+    bad("Assign a subject to this student group before opening attendance.");
+  if (!assignedSubjectMatches(classSection, subject))
     bad(
-      `${classSection.name} can only be used with ${groupSubjectCode(classSection.name)?.toUpperCase() || "its assigned"} subject.`,
+      `${classSection.name} can only be used with ${classSection.subject_name}.`,
     );
   const session = {
     id: id(),
@@ -1188,25 +1174,71 @@ api.delete("/admin/content/:id", async (req, res) => {
 });
 api.post("/admin/groups", async (req, res) => {
   const b = z
-    .object({ name: text, description: z.string().max(1000).default("") })
+    .object({
+      name: text,
+      description: z.string().max(1000).default(""),
+      subjectId: z.string().trim().min(1).max(200),
+    })
     .parse(req.body);
   const row = await insert("student_groups", {
     id: id(),
-    ...b,
+    name: b.name,
+    description: b.description,
     created_at: now(),
   });
+  const subject = await saveGroupSubject(row.id, b.subjectId);
+  if (!subject) {
+    await run("DELETE FROM student_groups WHERE id=?", [row.id]);
+    bad("Choose an available subject.");
+  }
   await audit(uid(req), "group.create", row.id);
-  res.json(row);
+  res.json({ ...row, subject_id: subject.id, subject_name: subject.name });
 });
 api.patch("/admin/groups/:id", async (req, res) => {
   const b = z
-    .object({ name: text, description: z.string().max(1000).default("") })
+    .object({
+      name: text,
+      description: z.string().max(1000).default(""),
+      subjectId: z.string().trim().min(1).max(200),
+    })
     .parse(req.body);
-  await update("student_groups", b, req.params.id as string);
+  const existingGroup = await one("SELECT id FROM student_groups WHERE id=?", [
+    req.params.id,
+  ]);
+  if (!existingGroup) bad("Student group not found.", 404);
+  const subject = await saveGroupSubject(req.params.id as string, b.subjectId);
+  if (!subject) bad("Choose an available subject.");
+  await update(
+    "student_groups",
+    { name: b.name, description: b.description },
+    req.params.id as string,
+  );
+  for (const row of await query(
+    "SELECT id,value FROM settings WHERE id LIKE 'attendance-session:%' OR id LIKE 'student-profile:%'",
+  )) {
+    const value = JSON.parse(row.value);
+    const isAttendance =
+      row.id.startsWith("attendance-session:") &&
+      value.class_section_id === req.params.id;
+    const isProfile =
+      row.id.startsWith("student-profile:") && value.group_id === req.params.id;
+    if (!isAttendance && !isProfile) continue;
+    await run("UPDATE settings SET value=? WHERE id=?", [
+      JSON.stringify({
+        ...value,
+        ...(isAttendance ? { class_section_name: b.name } : {}),
+        ...(isProfile ? { group_name: b.name, updated_at: now() } : {}),
+      }),
+      row.id,
+    ]);
+  }
   await audit(uid(req), "group.update", req.params.id as string);
   res.json({ ok: true });
 });
 api.delete("/admin/groups/:id", async (req, res) => {
+  await run("DELETE FROM settings WHERE id=?", [
+    `group-subject:${req.params.id}`,
+  ]);
   await run("DELETE FROM student_groups WHERE id=?", [req.params.id]);
   await audit(uid(req), "group.delete", req.params.id as string);
   res.json({ ok: true });
@@ -1222,11 +1254,12 @@ api.put("/admin/groups/:id/members", async (req, res) => {
   )
     bad("Student not found.");
   if (b.member) {
-    const group = await one("SELECT id,name FROM student_groups WHERE id=?", [
-      req.params.id,
-    ]);
-    if (!group || !groupSubjectCode(group.name))
-      bad("Students can only join Section-A or Section-B.");
+    const group = (await groupsWithSubjects()).find(
+      (entry: any) => entry.id === req.params.id,
+    );
+    if (!group) bad("Student group not found.");
+    if (!group.subject_id)
+      bad("Assign a subject to this student group before adding learners.");
     await run("DELETE FROM group_members WHERE user_id=?", [b.studentId]);
     await run(
       "INSERT INTO group_members(id,group_id,user_id) VALUES (?,?,?) ON CONFLICT(group_id,user_id) DO NOTHING",

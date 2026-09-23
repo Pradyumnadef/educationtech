@@ -1272,7 +1272,7 @@ test("deactivation invalidates live sessions immediately", async () => {
     401,
   );
 });
-test("Section-B grants ETW and blocks UHV", async () => {
+test("renamed and newly created groups keep their assigned subject", async () => {
   const send = await request("/auth/otp/send", "POST", {
     identifier: "group-learner@test.local",
     purpose: "signup",
@@ -1285,25 +1285,93 @@ test("Section-B grants ETW and blocks UHV", async () => {
   const group = await request(
     "/admin/groups",
     "POST",
-    { name: "Section-B", description: "ETW students." },
+    {
+      name: "Section-B",
+      description: "ETW students.",
+      subjectId: "english",
+    },
     teacher,
   );
   assert.equal(group.status, 200);
+  assert.equal(group.data.subject_id, "english");
+  assert.equal(
+    (
+      await request(
+        `/admin/groups/${group.data.id}`,
+        "PATCH",
+        {
+          name: "Second Year",
+          description: "Renamed ETW students.",
+          subjectId: "english",
+        },
+        teacher,
+      )
+    ).status,
+    200,
+  );
+  const options = await request("/onboarding/options", "GET", undefined, learner);
+  const renamed = options.data.groups.find(
+    (entry: any) => entry.id === group.data.id,
+  );
+  assert.equal(renamed.name, "Second Year");
+  assert.equal(renamed.subject_id, "english");
   assert.equal(
     (await request("/videos/calculus-1", "GET", undefined, learner)).status,
     403,
   );
-  await request(
-    "/admin/assignments",
+  const completed = await request(
+    "/profile",
+    "PATCH",
+    {
+      name: "Group learner",
+      rollNumber: "SECOND-001",
+      groupId: group.data.id,
+      interests: [],
+      onboarding: true,
+    },
+    learner,
+  );
+  assert.equal(completed.status, 200, JSON.stringify(completed.data));
+  assert.equal(completed.data.group_id, group.data.id);
+  const attendance = await request(
+    "/admin/attendance",
     "POST",
-    { targetType: "group", targetId: group.data.id, contentIds: ["calculus"] },
+    {
+      title: "Second Year attendance",
+      subjectId: "english",
+      groupId: group.data.id,
+      locationName: "Test campus",
+      latitude: 20,
+      longitude: 85,
+      radiusM: 50,
+      startsAt: Date.now() - 60000,
+      endsAt: Date.now() + 600000,
+    },
     teacher,
   );
-  await request(
-    `/admin/groups/${group.data.id}/members`,
-    "PUT",
-    { studentId: verified.data.user.id, member: true },
-    teacher,
+  assert.equal(attendance.status, 200, JSON.stringify(attendance.data));
+  assert.equal(attendance.data.class_section_name, "Second Year");
+  assert.equal(
+    (
+      await request(
+        `/admin/groups/${group.data.id}`,
+        "PATCH",
+        {
+          name: "Second Year ETW",
+          description: "Renamed again after attendance was created.",
+          subjectId: "english",
+        },
+        teacher,
+      )
+    ).status,
+    200,
+  );
+  const overview = await request("/admin/overview", "GET", undefined, teacher);
+  assert.equal(
+    overview.data.attendance.find(
+      (session: any) => session.id === attendance.data.id,
+    ).class_section_name,
+    "Second Year ETW",
   );
   assert.equal(
     (await request("/videos/calculus-1", "GET", undefined, learner)).status,
@@ -1322,6 +1390,12 @@ test("Section-B grants ETW and blocks UHV", async () => {
   assert.equal(
     (await request("/videos/calculus-1", "GET", undefined, learner)).status,
     403,
+  );
+  await request(
+    `/admin/attendance/${attendance.data.id}`,
+    "DELETE",
+    undefined,
+    teacher,
   );
   await request(`/admin/groups/${group.data.id}`, "DELETE", undefined, teacher);
 });
