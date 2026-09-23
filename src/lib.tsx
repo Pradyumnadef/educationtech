@@ -4,6 +4,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
 } from "react";
 import {
   X,
@@ -215,19 +216,34 @@ export function useData<T = any>(url: string) {
   const [data, setData] = useState<T | null>(null),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true);
+  const request = useRef<AbortController | null>(null);
   const refresh = useCallback(async () => {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
     try {
-      setData(await api(url));
+      const next = await api<T>(url, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      setData(next);
       setError("");
     } catch (e: any) {
-      setError(e.message);
+      if (!controller.signal.aborted && e?.name !== "AbortError")
+        setError(e.message);
     } finally {
-      setLoading(false);
+      if (request.current === controller) {
+        request.current = null;
+        setLoading(false);
+      }
     }
   }, [url]);
   useEffect(() => {
     setLoading(true);
     refresh();
+    return () => {
+      const active = request.current;
+      request.current = null;
+      active?.abort();
+    };
   }, [refresh]);
   return { data, error, loading, refresh, setData };
 }

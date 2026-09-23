@@ -182,11 +182,27 @@ function SubjectCarousel({ subjects }: { subjects: Item[] }) {
       "(prefers-reduced-motion: reduce)",
     ).matches;
     if (paused || reduceMotion) return;
-    const timer = window.setInterval(
-      () => setActive((current) => (current + 1) % dashboardSlides.length),
-      3000,
-    );
-    return () => window.clearInterval(timer);
+    let timer: number | undefined;
+    const stop = () => {
+      if (timer !== undefined) window.clearInterval(timer);
+      timer = undefined;
+    };
+    const start = () => {
+      stop();
+      if (document.visibilityState !== "visible") return;
+      timer = window.setInterval(
+        () => setActive((current) => (current + 1) % dashboardSlides.length),
+        3000,
+      );
+    };
+    const handleVisibility = () =>
+      document.visibilityState === "visible" ? start() : stop();
+    start();
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [paused]);
 
   const move = (direction: number) => {

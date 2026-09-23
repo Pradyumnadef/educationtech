@@ -70,11 +70,22 @@ export default function Landing() {
     return () =>
       document.removeEventListener("pointerdown", closeStudentAccessMenu);
   }, []);
+  useEffect(() => {
+    if (!menu) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenu(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [menu]);
   return (
     <div className="landing">
       <nav className="public-nav">
         <Logo />
-        <div className={`nav-links ${menu ? "open" : ""}`}>
+        <div
+          id="public-navigation"
+          className={`nav-links ${menu ? "open" : ""}`}
+        >
           <a href="#subjects" onClick={() => setMenu(false)}>
             Explore subjects
           </a>
@@ -84,7 +95,14 @@ export default function Landing() {
           <a href="#how" onClick={() => setMenu(false)}>
             How it works
           </a>
-          <button onClick={() => setContact(true)}>Contact</button>
+          <button
+            onClick={() => {
+              setMenu(false);
+              setContact(true);
+            }}
+          >
+            Contact
+          </button>
         </div>
         <div className="nav-actions">
           <details className="student-access-menu" ref={studentAccessMenu}>
@@ -108,6 +126,8 @@ export default function Landing() {
           <button
             className="mobile-menu icon-button"
             aria-label="Toggle navigation"
+            aria-controls="public-navigation"
+            aria-expanded={menu}
             onClick={() => setMenu(!menu)}
           >
             {menu ? <X /> : <Menu />}

@@ -24,7 +24,7 @@
       "continue": true
     },
     {
-      "src": "/assets/(.*)\\.(js|css)",
+      "src": "/assets/(.*)\\.(js|mjs|css)",
       "headers": {
         "Cache-Control": "public, max-age=31536000, immutable"
       },
