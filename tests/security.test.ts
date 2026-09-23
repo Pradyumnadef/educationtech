@@ -199,6 +199,55 @@ test("private routes require authentication and teacher role", async () => {
   );
   assert.equal((await request("/storage/media/algebra-1/video")).status, 401);
 });
+test("guest explore exposes only published content under public subjects", async () => {
+  const explore = await request("/explore");
+  assert.equal(explore.status, 200);
+  assert.ok(explore.data.content.some((item: any) => item.id === "english"));
+  assert.ok(explore.data.content.some((item: any) => item.id === "motion-1"));
+  assert.equal(JSON.stringify(explore.data).includes("storage_key"), false);
+  assert.equal(JSON.stringify(explore.data).includes("password_hash"), false);
+  assert.equal(JSON.stringify(explore.data).includes('"notes"'), false);
+
+  const hidden = await request(
+    "/admin/content",
+    "POST",
+    {
+      kind: "subject",
+      parent_id: null,
+      name: "Private promotion draft",
+      description: "Must never appear to guests.",
+      thumbnail: "english",
+      status: "published",
+      public: 0,
+      duration: 0,
+      tags: [],
+      notes: "",
+      storage_key: "",
+      caption_key: "",
+      resource_key: "",
+      publish_at: null,
+    },
+    teacher,
+  );
+  assert.equal(hidden.status, 200);
+  assert.equal(
+    (await request("/explore")).data.content.some(
+      (item: any) => item.id === hidden.data.id,
+    ),
+    false,
+  );
+  assert.equal(
+    (
+      await request(
+        `/admin/content/${hidden.data.id}`,
+        "DELETE",
+        undefined,
+        teacher,
+      )
+    ).status,
+    200,
+  );
+});
 test("CSRF and unexpected request origins are rejected", async () => {
   assert.equal(
     (
@@ -1170,6 +1219,20 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
     ),
   );
   assert.equal("storage_key" in studentMaterial.assets[0], false);
+  const guestExplore = (await request("/explore")).data;
+  const guestImportedMaterial = guestExplore.content.find(
+    (item: any) =>
+      item.parent_id === importedRoot.id && item.name === "lesson-notes.pdf",
+  );
+  assert.ok(guestImportedMaterial);
+  const guestPdf = guestImportedMaterial.assets.find(
+    (asset: any) => asset.mime === "application/pdf",
+  );
+  const guestPdfPreview = await fetch(origin + guestPdf.url, {
+    headers: { Range: "bytes=0-7" },
+  });
+  assert.equal(guestPdfPreview.status, 206);
+  assert.equal((await guestPdfPreview.arrayBuffer()).byteLength, 8);
   const preview = await fetch(origin + `/api/storage/preview/${prep.data.id}`, {
     headers: { Cookie: teacher.cookie, Range: "bytes=0-7" },
   });

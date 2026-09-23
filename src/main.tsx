@@ -15,6 +15,7 @@ const TeacherSetup = lazy(() => import("./pages/TeacherSetup"));
 const Auth = lazy(() => import("./pages/Auth"));
 const Student = lazy(() => import("./pages/Student"));
 const Admin = lazy(() => import("./pages/Admin"));
+const Explore = lazy(() => import("./pages/Explore"));
 class ErrorBoundary extends Component<
   { children: React.ReactNode },
   { failed: boolean }
@@ -78,7 +79,9 @@ function App() {
       ? "Teacher workspace · English Tech"
       : location.pathname.startsWith("/app")
         ? "Your learning space · English Tech"
-        : "English Tech — A brighter way to learn";
+        : location.pathname.startsWith("/explore")
+          ? "Guest Explore · English Tech"
+          : "English Tech — A brighter way to learn";
   }, [location.pathname]);
   React.useEffect(() => {
     rememberWorkspaceRoute(user, location.pathname, location.search);
@@ -88,6 +91,7 @@ function App() {
       <Suspense fallback={<Loading />}>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/explore/*" element={<Explore />} />
           <Route path="/auth/setup" element={<TeacherSetup />} />
           <Route
             path="/auth/:mode"

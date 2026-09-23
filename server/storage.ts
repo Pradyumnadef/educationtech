@@ -25,6 +25,7 @@ import { z } from "zod";
 import { one, run, insert, id, now, dataDir, production } from "./db.ts";
 import { auth, admin, accessContext, canViewContent, hash } from "./security.ts";
 import { promoteUpload } from "./promote-upload.ts";
+import { isPublicContent } from "./public-content.ts";
 export const storageRoutes = Router();
 const mediaDir = path.join(dataDir, "media");
 mkdirSync(mediaDir, { recursive: true });
@@ -447,6 +448,35 @@ async function deliverPreview(
   stream.on("error", () => res.destroy());
   stream.pipe(res);
 }
+storageRoutes.get("/public/:contentId/asset/:uploadId", async (req, res) => {
+  if (!(await isPublicContent(req.params.contentId)))
+    return res.status(404).json({ error: "This public file is not available." });
+  const row = await one(
+    `SELECT u.* FROM content_assets a JOIN uploads u ON u.id=a.upload_id AND u.state='ready'
+     WHERE a.content_id=? AND u.id=?`,
+    [req.params.contentId, req.params.uploadId],
+  );
+  if (!row) return res.status(404).json({ error: "Public file not found." });
+  await deliverPreview(row, req, res, req.query.download === "1");
+});
+storageRoutes.get("/public/:contentId/:type", async (req, res) => {
+  if (!(await isPublicContent(req.params.contentId)))
+    return res.status(404).json({ error: "This public file is not available." });
+  const content = await one("SELECT * FROM content WHERE id=?", [req.params.contentId]);
+  const key =
+    req.params.type === "video"
+      ? content?.storage_key
+      : req.params.type === "resource"
+        ? content?.resource_key
+        : "";
+  if (!key) return res.status(404).json({ error: "Public file not found." });
+  const row = await one(
+    "SELECT * FROM uploads WHERE storage_key=? AND state='ready'",
+    [key],
+  );
+  if (!row) return res.status(404).json({ error: "Public file not found." });
+  await deliverPreview(row, req, res, req.query.download === "1");
+});
 storageRoutes.get("/preview/:id", auth, admin, async (req, res) => {
   const row = await one("SELECT * FROM uploads WHERE id=? AND state='ready'", [
     req.params.id,

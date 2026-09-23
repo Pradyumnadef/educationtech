@@ -89,6 +89,9 @@ export default function Landing() {
           <a href="#subjects" onClick={() => setMenu(false)}>
             Explore subjects
           </a>
+          <Link to="/explore" onClick={() => setMenu(false)}>
+            Guest preview
+          </Link>
           <a href="#why" onClick={() => setMenu(false)}>
             Why English Tech
           </a>
@@ -159,6 +162,14 @@ export default function Landing() {
               follow your curiosity,
               <br className="desktop" /> and become a little more you.
             </p>
+            <div className="hero-actions">
+              <Link className="button" to="/explore">
+                Browse as guest <ArrowRight size={16} />
+              </Link>
+              <span className="text-button">
+                No registration needed
+              </span>
+            </div>
           </div>
           <div
             className="hero-scene"
@@ -219,7 +230,7 @@ export default function Landing() {
               <h2>What lights you up?</h2>
               <p>Find a subject that makes you want to know a little more.</p>
             </div>
-            <Link to="/auth/signup" className="text-button">
+            <Link to="/explore" className="text-button">
               Explore all subjects <ArrowUpRight size={18} />
             </Link>
           </div>
@@ -242,7 +253,7 @@ export default function Landing() {
                   },
                 ]
             ).map((s) => (
-              <Link to="/auth/signup" className="public-subject" key={s.id}>
+              <Link to={`/explore?folder=${encodeURIComponent(s.id)}`} className="public-subject" key={s.id}>
                 <CourseArt theme={s.thumbnail} />
                 <div>
                   <h3>
@@ -430,6 +441,7 @@ export default function Landing() {
           <div>
             <b>Explore</b>
             <a href="#subjects">Subjects</a>
+            <Link to="/explore">Guest preview</Link>
             <a href="#why">About English Tech</a>
             <a href="#how">How it works</a>
           </div>

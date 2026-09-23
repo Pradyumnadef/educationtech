@@ -111,7 +111,7 @@ app.get("/sitemap.xml", (_req, res) =>
   res
     .type("xml")
     .send(
-      `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${(process.env.APP_ORIGIN || "http://localhost:3000").replace(/[<>&"']/g, "")}</loc></url></urlset>`,
+      `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${(process.env.APP_ORIGIN || "http://localhost:3000").replace(/[<>&"']/g, "")}</loc></url><url><loc>${(process.env.APP_ORIGIN || "http://localhost:3000").replace(/[<>&"']/g, "")}/explore</loc></url></urlset>`,
     ),
 );
 app.use((req, res, next) => {

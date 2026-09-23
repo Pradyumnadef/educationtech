@@ -2013,7 +2013,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
                   checked={!!form.public}
                   onChange={(e) => set("public", e.target.checked ? 1 : 0)}
                 />{" "}
-                Show title and cover in the public catalog
+                Show this subject and its published contents in Guest Explore
               </label>
             )}
           </div>

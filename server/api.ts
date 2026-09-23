@@ -12,6 +12,7 @@ import {
   throttle,
 } from "./security.ts";
 import { cleanupUploadsIfUnreferenced } from "./storage.ts";
+import { publicContentTree } from "./public-content.ts";
 export const api = Router();
 const uid = (req: any) => req.user.id;
 const text = z.string().trim().min(1).max(200);
@@ -178,11 +179,64 @@ async function submissionFiles(submissionId: string) {
   );
 }
 api.get("/catalog", async (_req, res) => {
-  const rows = await query(
-    "SELECT id,kind,parent_id,name,description,thumbnail FROM content WHERE public=1 AND status='published' AND (publish_at IS NULL OR publish_at<=?) AND kind='subject' ORDER BY created_at",
-    [now()],
-  );
+  const { nodes } = await publicContentTree();
+  const rows = nodes
+    .filter((node: any) => node.kind === "subject")
+    .map(({ id, kind, parent_id, name, description, thumbnail }: any) => ({
+      id,
+      kind,
+      parent_id,
+      name,
+      description,
+      thumbnail,
+    }))
+    .sort((a: any, b: any) => a.name.localeCompare(b.name));
   res.json(rows);
+});
+api.get("/explore", async (_req, res) => {
+  const { nodes, allowed } = await publicContentTree();
+  const content = nodes.map((node: any) => {
+    const { notes, ...safe } = publicContent(node);
+    return safe;
+  });
+  const assetRows = await query(
+    `SELECT a.content_id,u.id,u.filename,u.mime,u.size,u.created_at,a.asset_type,a.sort_order,'asset' AS route_type
+     FROM content_assets a JOIN uploads u ON u.id=a.upload_id AND u.state='ready'
+     UNION ALL
+     SELECT c.id AS content_id,u.id,u.filename,u.mime,u.size,u.created_at,'video' AS asset_type,-1 AS sort_order,'video' AS route_type
+     FROM content c JOIN uploads u ON u.storage_key=c.storage_key AND u.state='ready'
+     WHERE c.storage_key<>''
+     UNION ALL
+     SELECT c.id AS content_id,u.id,u.filename,u.mime,u.size,u.created_at,'file' AS asset_type,-1 AS sort_order,'resource' AS route_type
+     FROM content c JOIN uploads u ON u.storage_key=c.resource_key AND u.state='ready'
+     WHERE c.resource_key<>''
+     ORDER BY content_id,asset_type DESC,sort_order`,
+  );
+  const assetsByContent = new Map<string, any[]>();
+  for (const asset of assetRows as any[]) {
+    if (!allowed.has(asset.content_id)) continue;
+    const assets = assetsByContent.get(asset.content_id) || [];
+    if (!assets.some((existing) => existing.id === asset.id)) {
+      const { route_type, ...safeAsset } = asset;
+      assets.push({
+        ...safeAsset,
+        url:
+          route_type === "asset"
+            ? `/api/storage/public/${asset.content_id}/asset/${asset.id}`
+            : `/api/storage/public/${asset.content_id}/${route_type}`,
+      });
+    }
+    assetsByContent.set(asset.content_id, assets);
+  }
+  for (const item of content as any[]) {
+    if (item.kind !== "video") continue;
+    const assets = assetsByContent.get(item.id) || [];
+    item.assets = assets;
+    item.video_count = assets.filter((asset) => asset.asset_type === "video").length;
+    item.file_count = assets.filter((asset) => asset.asset_type === "file").length;
+  }
+  res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+  res.json({ content });
 });
 api.post("/contact", async (req, res) => {
   await throttle(`contact:${req.ip}`, 3, 3600000);
