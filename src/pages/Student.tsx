@@ -1107,7 +1107,6 @@ function DocumentViewer({
   assetId: string;
   data: any;
 }) {
-  const { user } = useAuth();
   useStudentMediaProtection();
   const items: Item[] = data.content;
   const material = items.find(
@@ -1129,7 +1128,6 @@ function DocumentViewer({
     : "/app/videos";
   const assetUrl = String(asset.url || "");
   const isPdf = asset.mime === "application/pdf";
-  const watermark = studentWatermark(user);
   return (
     <>
       <div className="document-viewer-header">
@@ -1144,11 +1142,7 @@ function DocumentViewer({
         </div>
       </div>
       {isPdf ? (
-        <PdfViewer
-          url={assetUrl}
-          filename={asset.filename}
-          watermark={watermark}
-        />
+        <PdfViewer url={assetUrl} filename={asset.filename} />
       ) : (
         <Empty
           title="Preview is available for PDF files"
@@ -1229,7 +1223,6 @@ function Watch({
     lastLocalSave = useRef(0),
     videoViewerRef = useRef<HTMLDivElement>(null);
   useStudentMediaProtection();
-  const watermark = studentWatermark(user);
   const positionKey = `english-tech:video-position:${user.id}:${videoId}`;
   const rememberPosition = (position: number, complete = false) => {
     try {
@@ -1385,11 +1378,6 @@ function Watch({
                     />
                   )}
                 </video>
-                <div className="protected-media-watermark" aria-hidden="true">
-                  {Array.from({ length: 8 }, (_, watermarkIndex) => (
-                    <span key={watermarkIndex}>{watermark}</span>
-                  ))}
-                </div>
                 <button
                   type="button"
                   className="video-fullscreen-button"
@@ -1523,10 +1511,6 @@ function Watch({
       </div>
     </>
   );
-}
-function studentWatermark(user: any) {
-  const identity = user.email || user.phone || user.id;
-  return `${user.name} • ${identity}`;
 }
 function useStudentMediaProtection() {
   useEffect(() => {
