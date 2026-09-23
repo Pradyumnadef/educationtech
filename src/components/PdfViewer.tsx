@@ -96,9 +96,11 @@ function PdfPage({
 export default function PdfViewer({
   url,
   filename,
+  watermark,
 }: {
   url: string;
   filename: string;
+  watermark?: string;
 }) {
   const viewerRef = useRef<HTMLElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -210,8 +212,9 @@ export default function PdfViewer({
   return (
     <section
       ref={viewerRef}
-      className="pdf-canvas-viewer"
+      className={`pdf-canvas-viewer${watermark ? " protected-media" : ""}`}
       aria-label={`PDF viewer: ${filename}`}
+      onContextMenu={watermark ? (event) => event.preventDefault() : undefined}
     >
       <div className="pdf-viewer-toolbar">
         <div>
@@ -295,6 +298,13 @@ export default function PdfViewer({
           ))
         )}
       </div>
+      {watermark && (
+        <div className="protected-media-watermark" aria-hidden="true">
+          {Array.from({ length: 12 }, (_, index) => (
+            <span key={index}>{watermark}</span>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

@@ -505,7 +505,8 @@ storageRoutes.get(
 );
 // Every byte-range request checks the current session and publication state. The private object URL never leaves the server.
 storageRoutes.get("/media/:id/:type", auth, async (req, res) => {
-  const ctx = await accessContext((req as any).user);
+  const user = (req as any).user;
+  const ctx = await accessContext(user);
   const video = ctx.nodes.find((n: any) => n.id === req.params.id);
   if (!video || !canViewContent(ctx, video.id))
     return res
@@ -530,6 +531,19 @@ storageRoutes.get("/media/:id/:type", auth, async (req, res) => {
   );
   if (!row)
     return res.status(404).json({ error: "This file is still processing." });
+  if (user.role !== "admin" && req.query.download === "1")
+    return res
+      .status(403)
+      .json({ error: "Downloads are not available in the student workspace." });
+  if (
+    user.role !== "admin" &&
+    type === "resource" &&
+    !row.mime.startsWith("video/") &&
+    row.mime !== "application/pdf"
+  )
+    return res.status(415).json({
+      error: "This document cannot be previewed securely in your browser.",
+    });
   const check = setInterval(async () => {
     try {
       const user = await one(
@@ -548,10 +562,11 @@ storageRoutes.get("/media/:id/:type", auth, async (req, res) => {
   }, 2000);
   res.on("close", () => clearInterval(check));
   res.on("finish", () => clearInterval(check));
-  await deliverPreview(row, req, res, type === "resource");
+  await deliverPreview(row, req, res, user.role === "admin" && type === "resource");
 });
 storageRoutes.get("/media/:id/asset/:uploadId", auth, async (req, res) => {
-  const ctx = await accessContext((req as any).user);
+  const user = (req as any).user;
+  const ctx = await accessContext(user);
   const content = ctx.nodes.find((node: any) => node.id === req.params.id);
   if (!content || !canViewContent(ctx, content.id))
     return res
@@ -563,6 +578,10 @@ storageRoutes.get("/media/:id/asset/:uploadId", auth, async (req, res) => {
     [content.id, req.params.uploadId],
   );
   if (!row) return res.status(404).json({ error: "File not found." });
+  if (user.role !== "admin" && req.query.download === "1")
+    return res
+      .status(403)
+      .json({ error: "Downloads are not available in the student workspace." });
   const check = setInterval(async () => {
     try {
       const user = await one(
@@ -584,5 +603,9 @@ storageRoutes.get("/media/:id/asset/:uploadId", auth, async (req, res) => {
   const download = req.query.download === "1";
   const browserPreview =
     row.mime.startsWith("video/") || row.mime === "application/pdf";
+  if (user.role !== "admin" && !browserPreview)
+    return res.status(415).json({
+      error: "This document cannot be previewed securely in your browser.",
+    });
   await deliverPreview(row, req, res, download || !browserPreview);
 });

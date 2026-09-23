@@ -1202,6 +1202,15 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
   assert.equal(r.status, 206);
   assert.equal(r.headers.get("content-range"), "bytes 0-15/64");
   assert.equal((await r.arrayBuffer()).byteLength, 16);
+  const videoDownload = await fetch(
+    origin + "/api/storage/media/motion-4/video?download=1",
+    { headers: { Cookie: student.cookie } },
+  );
+  assert.equal(videoDownload.status, 403);
+  assert.equal(
+    (await videoDownload.json()).error,
+    "Downloads are not available in the student workspace.",
+  );
   const lesson = (await request("/videos/motion-4", "GET", undefined, student))
     .data;
   assert.equal(lesson.videos.length, 1);
@@ -1217,10 +1226,10 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
       headers: { Cookie: student.cookie },
     },
   );
-  assert.equal(pdfDownload.status, 200);
-  assert.match(
-    pdfDownload.headers.get("content-disposition") || "",
-    /^attachment;/,
+  assert.equal(pdfDownload.status, 403);
+  assert.equal(
+    (await pdfDownload.json()).error,
+    "Downloads are not available in the student workspace.",
   );
   assert.equal(
     (

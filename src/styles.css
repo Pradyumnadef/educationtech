@@ -3064,6 +3064,7 @@ a:focus-visible {
   align-items: start;
 }
 .video-player {
+  position: relative;
   background: #1d3024;
   border: 1px solid #2a4530;
   border-radius: 12px;
@@ -3077,6 +3078,38 @@ a:focus-visible {
   width: 100%;
   height: 100%;
   display: block;
+}
+.video-player:fullscreen,
+.video-player:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  aspect-ratio: auto;
+  border: 0;
+  border-radius: 0;
+  background: #07130c;
+}
+.video-player:fullscreen video,
+.video-player:-webkit-full-screen video {
+  object-fit: contain;
+}
+.video-fullscreen-button {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 7;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  color: white;
+  background: rgba(7, 19, 12, 0.64);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+.video-fullscreen-button:hover {
+  background: rgba(7, 19, 12, 0.82);
 }
 .video-player .empty {
   background: transparent;
@@ -6878,11 +6911,44 @@ a.drive-folder-card {
   color: var(--muted);
 }
 .pdf-canvas-viewer {
+  position: relative;
   border: 1px solid var(--line);
   border-radius: 1rem;
   overflow: hidden;
   background: #eef0ec;
   box-shadow: 0 14px 40px rgba(25, 54, 40, 0.08);
+}
+.protected-media {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.protected-media-watermark {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: minmax(7rem, 1fr);
+  align-items: center;
+  justify-items: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+.protected-media-watermark span {
+  max-width: 16rem;
+  color: rgba(27, 68, 47, 0.2);
+  font-size: clamp(0.62rem, 1.2vw, 0.86rem);
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  line-height: 1.35;
+  text-align: center;
+  overflow-wrap: anywhere;
+  transform: rotate(-24deg);
+}
+.video-player .protected-media-watermark span {
+  color: rgba(255, 255, 255, 0.3);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 .pdf-canvas-viewer:fullscreen,
 .pdf-canvas-viewer:-webkit-full-screen {

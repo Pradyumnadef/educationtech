@@ -32,6 +32,8 @@ import {
   Users,
   X,
   ArrowUpDown,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import Shell from "../components/Shell";
 import PdfViewer from "../components/PdfViewer";
@@ -1105,6 +1107,8 @@ function DocumentViewer({
   assetId: string;
   data: any;
 }) {
+  const { user } = useAuth();
+  useStudentMediaProtection();
   const items: Item[] = data.content;
   const material = items.find(
     (item) => item.id === contentId && item.kind === "video",
@@ -1124,8 +1128,8 @@ function DocumentViewer({
     ? `/app/videos?folder=${encodeURIComponent(material.parent_id)}`
     : "/app/videos";
   const assetUrl = String(asset.url || "");
-  const downloadUrl = `${assetUrl}${assetUrl.includes("?") ? "&" : "?"}download=1`;
   const isPdf = asset.mime === "application/pdf";
+  const watermark = studentWatermark(user);
   return (
     <>
       <div className="document-viewer-header">
@@ -1138,16 +1142,17 @@ function DocumentViewer({
             {material.name} · {fileSize(asset.size)}
           </p>
         </div>
-        <a className="button" href={downloadUrl}>
-          <Download size={17} /> Download
-        </a>
       </div>
       {isPdf ? (
-        <PdfViewer url={assetUrl} filename={asset.filename} />
+        <PdfViewer
+          url={assetUrl}
+          filename={asset.filename}
+          watermark={watermark}
+        />
       ) : (
         <Empty
           title="Preview is available for PDF files"
-          description="Use Download to open this document in the appropriate application."
+          description="This document cannot be previewed securely in your browser."
         >
           <FileText size={28} />
         </Empty>
@@ -1217,10 +1222,14 @@ function Watch({
     toast = useToast(),
     [denied, setDenied] = useState(""),
     [speed, setSpeed] = useState("1"),
-    [selectedVideo, setSelectedVideo] = useState("");
+    [selectedVideo, setSelectedVideo] = useState(""),
+    [videoFullscreen, setVideoFullscreen] = useState(false);
   const lastTime = useRef(0),
     lastSave = useRef(Date.now()),
-    lastLocalSave = useRef(0);
+    lastLocalSave = useRef(0),
+    videoViewerRef = useRef<HTMLDivElement>(null);
+  useStudentMediaProtection();
+  const watermark = studentWatermark(user);
   const positionKey = `english-tech:video-position:${user.id}:${videoId}`;
   const rememberPosition = (position: number, complete = false) => {
     try {
@@ -1285,6 +1294,22 @@ function Watch({
       clearInterval(timer);
     };
   }, [videoId]);
+  useEffect(() => {
+    const updateFullscreen = () =>
+      setVideoFullscreen(document.fullscreenElement === videoViewerRef.current);
+    document.addEventListener("fullscreenchange", updateFullscreen);
+    return () => document.removeEventListener("fullscreenchange", updateFullscreen);
+  }, []);
+  const toggleVideoFullscreen = async () => {
+    const viewer = videoViewerRef.current;
+    if (!viewer || !document.fullscreenEnabled) return;
+    try {
+      if (document.fullscreenElement === viewer) await document.exitFullscreen();
+      else await viewer.requestFullscreen();
+    } catch {
+      toast("Fullscreen is not available in this browser.", "error");
+    }
+  };
   if (loading) return <Loading />;
   if (error || denied) return <Failure error={error || denied} />;
   return (
@@ -1301,16 +1326,19 @@ function Watch({
       </Link>
       <div className="watch-layout">
         <div>
-          <div className="video-player">
+          <div className="video-player protected-media" ref={videoViewerRef}>
             {selectedVideo ? (
-              <video
-                key={`${videoId}:${selectedVideo}`}
-                ref={ref}
-                controls
-                controlsList="nodownload"
-                playsInline
-                preload="metadata"
-                onContextMenu={(e) => e.preventDefault()}
+              <>
+                <video
+                  key={`${videoId}:${selectedVideo}`}
+                  ref={ref}
+                  controls
+                  controlsList="nodownload nofullscreen noremoteplayback"
+                  disablePictureInPicture
+                  playsInline
+                  preload="metadata"
+                  onContextMenu={(e) => e.preventDefault()}
+                  onDoubleClick={(e) => e.preventDefault()}
                 onLoadedMetadata={() => {
                   if (ref.current) {
                     let localPosition = 0;
@@ -1345,18 +1373,33 @@ function Watch({
                     "error",
                   )
                 }
-              >
-                <source src={selectedVideo} />
-                {lesson.captions && (
-                  <track
-                    src={lesson.captions}
-                    kind="captions"
-                    srcLang="en"
-                    label="English"
-                    default
-                  />
-                )}
-              </video>
+                >
+                  <source src={selectedVideo} />
+                  {lesson.captions && (
+                    <track
+                      src={lesson.captions}
+                      kind="captions"
+                      srcLang="en"
+                      label="English"
+                      default
+                    />
+                  )}
+                </video>
+                <div className="protected-media-watermark" aria-hidden="true">
+                  {Array.from({ length: 8 }, (_, watermarkIndex) => (
+                    <span key={watermarkIndex}>{watermark}</span>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="video-fullscreen-button"
+                  onClick={toggleVideoFullscreen}
+                  aria-label={videoFullscreen ? "Exit video fullscreen" : "View video fullscreen"}
+                  title={videoFullscreen ? "Exit fullscreen" : "View fullscreen"}
+                >
+                  {videoFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                </button>
+              </>
             ) : (
               <Empty
                 title="This lesson is getting ready"
@@ -1480,6 +1523,29 @@ function Watch({
       </div>
     </>
   );
+}
+function studentWatermark(user: any) {
+  const identity = user.email || user.phone || user.id;
+  return `${user.name} • ${identity}`;
+}
+function useStudentMediaProtection() {
+  useEffect(() => {
+    const protectKeys = (event: KeyboardEvent) => {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        ["p", "s", "u"].includes(event.key.toLowerCase())
+      ) {
+        event.preventDefault();
+      }
+    };
+    const preventDrag = (event: DragEvent) => event.preventDefault();
+    document.addEventListener("keydown", protectKeys);
+    document.addEventListener("dragstart", preventDrag);
+    return () => {
+      document.removeEventListener("keydown", protectKeys);
+      document.removeEventListener("dragstart", preventDrag);
+    };
+  }, []);
 }
 function ShieldIcon() {
   return <Lock size={13} />;
