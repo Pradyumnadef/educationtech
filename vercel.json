@@ -63,8 +63,5 @@
       "src": "/.*",
       "dest": "/index.html"
     }
-  ],
-  "regions": [
-    "bom1"
   ]
 }
