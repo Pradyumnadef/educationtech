@@ -7577,3 +7577,128 @@ a.drive-folder-card {
     padding: 16px;
   }
 }
+
+/* Device layouts: preserve readable content instead of shrinking tablet text. */
+.workspace,
+.workspace-body,
+.auth-page,
+.auth-main,
+.onboarding {
+  min-height: 100dvh;
+}
+.header-search,
+.header-search input,
+.page-heading > div,
+.editor-grid > div,
+.table-wrap {
+  min-width: 0;
+}
+.page-heading h1,
+.modal > header h2,
+.guest-viewer-page h1,
+.guest-material-heading h3,
+.attendance-card h2 {
+  overflow-wrap: anywhere;
+}
+.modal {
+  max-height: calc(100dvh - 32px);
+  overscroll-behavior: contain;
+}
+.modal > header {
+  align-items: flex-start;
+}
+.modal > header .icon-button {
+  flex-shrink: 0;
+}
+.table-wrap {
+  max-width: 100%;
+  overscroll-behavior-x: contain;
+}
+.pdf-canvas-viewer:fullscreen {
+  height: 100dvh;
+}
+
+@media (max-width: 1024px) {
+  .workspace { --sidebar: 0px; }
+  .workspace .mobile-menu { display: inline-flex; }
+  .workspace .sidebar {
+    width: min(290px, calc(100vw - 48px));
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    padding: max(24px, env(safe-area-inset-top)) 20px max(16px, env(safe-area-inset-bottom));
+    overscroll-behavior: contain;
+  }
+  .workspace .sidebar.is-open { transform: translateX(0); }
+  .workspace .sidebar nav > a { font-size: 14px; min-height: 46px; }
+  .workspace .sidebar-note { display: none; }
+  .workspace .drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: #213b264f;
+    z-index: 39;
+  }
+  .workspace .breadcrumb { display: none; }
+  .workspace .header-search { margin-left: 0; max-width: none; }
+  .workspace-header { gap: 12px; padding-inline: 16px; }
+  .workspace-main { padding-inline: clamp(16px, 3vw, 32px); }
+  .page-heading { flex-wrap: wrap; }
+  .page-heading p,
+  .course-card-body p,
+  .notification-card p { font-size: 14px; }
+  .page-heading .eyebrow { font-size: 10px; }
+  .stats-grid .stat-top,
+  .stat > small { font-size: 12px; }
+  .stat-top { gap: 8px; }
+  .stat > small { line-height: 1.5; }
+  .table-wrap th,
+  .table-wrap td { font-size: 12px; }
+  .editor-grid { grid-template-columns: minmax(0, 1fr); }
+  .button,
+  .sidebar-user,
+  .logout { min-height: 44px; }
+  .icon-button { min-width: 44px; min-height: 44px; }
+  .workspace-header > a:last-child { flex-shrink: 0; }
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea,
+  .header-search input { font-size: 16px; }
+  .header-search input { min-height: 44px; }
+  .drive-heading-actions,
+  .attendance-analysis-actions,
+  .modal-actions { flex-wrap: wrap; }
+  .drive-heading-actions .button { white-space: normal; }
+  .pdf-canvas-stage { min-height: min(28rem, 60dvh); height: 68dvh; }
+  .pdf-viewer-toolbar { gap: 8px; }
+  .pdf-viewer-toolbar span { min-width: 4rem; }
+}
+
+@media (max-width: 620px) {
+  .workspace-header { gap: 8px; padding-inline: 10px; }
+  .workspace-header .header-search > svg { display: none; }
+  .header-search input::placeholder { font-size: 12px; }
+  .modal,
+  .modal.wide { width: calc(100vw - 24px); max-width: calc(100vw - 24px); padding: 16px; }
+  .editor-grid .grid.two { grid-template-columns: minmax(0, 1fr); }
+  .pdf-canvas-stage { padding: 8px; }
+  .pdf-viewer-toolbar { padding: 6px; }
+  .pdf-viewer-toolbar > div { gap: 4px; }
+  .pdf-viewer-toolbar span { font-size: 13px; }
+  .drive-explorer-row { gap: 8px; }
+  .drive-explorer-row .table-actions { gap: 0; }
+  .drive-explorer-row .icon-button { padding: 8px; }
+  .guest-footer { flex-wrap: wrap; padding-block: 16px; gap: 8px; }
+  .guest-material-heading { grid-template-columns: auto minmax(0, 1fr); }
+  .guest-material-heading > small { grid-column: 2; }
+}
+
+@media (max-width: 360px) {
+  .stats-grid { grid-template-columns: minmax(0, 1fr); }
+  .pagination { flex-wrap: wrap; }
+  .drive-heading-actions .button { flex-basis: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace .sidebar { transition: none; }
+  .pdf-canvas-stage { scroll-behavior: auto; }
+}

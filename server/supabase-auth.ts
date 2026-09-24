@@ -75,7 +75,6 @@ socialAuth.get('/google/callback', async (req, res) => {
   try {
     const saved = JSON.parse(state.state);
     const storage = saved.storage || saved;
-    const returnTo = typeof saved.returnTo === 'string' ? saved.returnTo : '';
     const client = authClient(storage);
     const { data, error } = await client.auth.exchangeCodeForSession(req.query.code);
     if (error || !data.session) return fail();
@@ -109,11 +108,6 @@ socialAuth.get('/google/callback', async (req, res) => {
     }
     await createSession(res, user);
     await audit(user.id, state.action === 'link' ? 'google.link' : 'google.login', user.id);
-    const allowedReturn = user.role === 'admin'
-      ? /^\/admin(?:\/|\?|$)/.test(returnTo)
-      : /^\/app(?:\/|\?|$)/.test(returnTo);
-    res.redirect(user.role !== 'admin' && !user.onboarding
-      ? '/onboarding'
-      : allowedReturn ? returnTo : '/?signedIn=1');
+    res.redirect(user.role === 'admin' ? '/admin' : user.onboarding ? '/app' : '/onboarding');
   } catch { return fail(); }
 });

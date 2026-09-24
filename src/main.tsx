@@ -8,7 +8,7 @@ import {
   useLocation,
 } from "react-router-dom";
 import { AuthProvider, ToastProvider, useAuth, Loading, Failure } from "./lib";
-import { rememberWorkspaceRoute, resumePath } from "./session";
+import { resumePath } from "./session";
 import Landing from "./pages/Landing";
 import "./styles.css";
 const TeacherSetup = lazy(() => import("./pages/TeacherSetup"));
@@ -78,7 +78,6 @@ function GuestOnly({ children }: { children: React.ReactNode }) {
 }
 function App() {
   const location = useLocation();
-  const { user } = useAuth();
   React.useEffect(() => {
     window.scrollTo(0, 0);
     document.title = location.pathname.startsWith("/admin")
@@ -89,9 +88,6 @@ function App() {
           ? "Guest Explore · English Tech"
           : "English Tech — A brighter way to learn";
   }, [location.pathname]);
-  React.useEffect(() => {
-    rememberWorkspaceRoute(user, location.pathname, location.search);
-  }, [user, location.pathname, location.search]);
   return (
     <ErrorBoundary>
       <Suspense fallback={<Loading />}>

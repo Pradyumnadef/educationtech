@@ -67,17 +67,34 @@ export default function Shell({
 }) {
   const { user, setUser, platform, isOwner } = useAuth(),
     [open, setOpen] = useState(false),
-    [mobile, setMobile] = useState(window.innerWidth <= 760),
+    [mobile, setMobile] = useState(window.innerWidth <= 1024),
     [results, setResults] = useState<any[] | null>(null),
     [search, setSearch] = useState(""),
     toast = useToast(),
     navigate = useNavigate();
   useEffect(() => {
-    const m = window.matchMedia("(max-width: 760px)");
-    const update = () => setMobile(m.matches);
+    const m = window.matchMedia("(max-width: 1024px)");
+    const update = () => {
+      setMobile(m.matches);
+      if (!m.matches) setOpen(false);
+    };
+    update();
     m.addEventListener("change", update);
     return () => m.removeEventListener("change", update);
   }, []);
+  useEffect(() => {
+    if (!mobile || !open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previous;
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [mobile, open]);
   const base = admin ? "/admin" : "/app";
   return (
     <div className={`workspace ${admin ? "admin-workspace" : ""}`}>
@@ -92,6 +109,7 @@ export default function Shell({
         />
       )}
       <aside
+        id="workspace-navigation"
         inert={mobile && !open}
         className={`sidebar ${open ? "is-open" : ""}`}
       >
@@ -183,6 +201,8 @@ export default function Shell({
           <button
             className="icon-button mobile-menu"
             aria-label="Open navigation"
+            aria-expanded={open}
+            aria-controls="workspace-navigation"
             onClick={() => setOpen(true)}
           >
             <Menu />

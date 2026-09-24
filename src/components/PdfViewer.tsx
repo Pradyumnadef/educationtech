@@ -52,7 +52,7 @@ function PdfPage({
         const page = await document.getPage(pageNumber);
         if (cancelled) return;
         const natural = page.getViewport({ scale: 1 });
-        const fit = Math.max(0.4, (width - 32) / natural.width);
+        const fit = Math.max(1, width) / natural.width;
         const viewport = page.getViewport({ scale: fit * zoom });
         const ratio = Math.min(window.devicePixelRatio || 1, 2);
         const canvas = canvasRef.current!;

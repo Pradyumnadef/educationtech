@@ -56,11 +56,11 @@ test('Google callback rejects missing browser state, supports PKCE and prevents 
   const saved = await db.one('SELECT * FROM users WHERE email=?',[email]); assert.equal(saved.role,'student');
   const replay = await request(r.callback,undefined,r.cookie); assert.match(replay.response.headers.get('location')!,/authError/);
 });
-test('Google sign-in safely restores an onboarded student deep link', async()=> {
+test('Google sign-in opens student Overview even with a previous deep link', async()=> {
   email='learner@example.test';
   await db.run('UPDATE users SET status=?,onboarding=1 WHERE email=?',['active',email]);
   const r=await start('login','/app/videos?module=module-1');
-  assert.equal((await request(r.callback,undefined,r.cookie)).response.headers.get('location'),'/app/videos?module=module-1');
+  assert.equal((await request(r.callback,undefined,r.cookie)).response.headers.get('location'),'/app');
 });
 test('Google cannot auto-link a teacher or authenticate an unverified identity', async()=> {
   email='teacher@example.test';
@@ -95,9 +95,9 @@ test('An authenticated teacher can explicitly link Google and sign in again', as
   const redirect=new URL(new URL(r.data.url).searchParams.get('redirect_to')!);
   const callback='/google/callback?flow='+redirect.searchParams.get('flow')+'&code=provider-code';
   const linked=await request(callback,undefined,cookie+'; '+r.cookie);
-  assert.equal(linked.response.headers.get('location'),'/?signedIn=1');
+  assert.equal(linked.response.headers.get('location'),'/admin');
   const again=await start('login');
-  assert.equal((await request(again.callback,undefined,again.cookie)).response.headers.get('location'),'/?signedIn=1');
+  assert.equal((await request(again.callback,undefined,again.cookie)).response.headers.get('location'),'/admin');
 });
 test('Expired Google flows cannot create a session',async()=> {
   email='expired@example.test'; const r=await start();
