@@ -162,35 +162,11 @@ function assignmentDeadline(assignment: any, submission?: any) {
       : Infinity;
   return Math.min(Number(assignment.due_at), timed);
 }
-async function assignmentResources(assignmentId: string) {
-  return query(
-    `SELECT u.id,u.filename,u.mime,u.size FROM assignment_resources r
-     JOIN uploads u ON u.id=r.upload_id AND u.state='ready'
-     WHERE r.assignment_id=? ORDER BY u.created_at`,
-    [assignmentId],
-  );
-}
-async function submissionFiles(submissionId: string) {
-  return query(
-    `SELECT u.id,u.filename,u.mime,u.size FROM submission_files f
-     JOIN uploads u ON u.id=f.upload_id AND u.state='ready'
-     WHERE f.submission_id=? ORDER BY u.created_at`,
-    [submissionId],
-  );
-}
 api.get("/catalog", async (_req, res) => {
-  const { nodes } = await publicContentTree();
-  const rows = nodes
-    .filter((node: any) => node.kind === "subject")
-    .map(({ id, kind, parent_id, name, description, thumbnail }: any) => ({
-      id,
-      kind,
-      parent_id,
-      name,
-      description,
-      thumbnail,
-    }))
-    .sort((a: any, b: any) => a.name.localeCompare(b.name));
+  const rows = await query(
+    "SELECT id,kind,parent_id,name,description,thumbnail FROM content WHERE kind='subject' AND parent_id IS NULL AND status='published' AND public=1 AND (publish_at IS NULL OR publish_at<=?) ORDER BY name",
+    [now()],
+  );
   res.json(rows);
 });
 api.get("/explore", async (_req, res) => {
@@ -235,7 +211,7 @@ api.get("/explore", async (_req, res) => {
     item.video_count = assets.filter((asset) => asset.asset_type === "video").length;
     item.file_count = assets.filter((asset) => asset.asset_type === "file").length;
   }
-  res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+  res.setHeader("Cache-Control", "no-store");
   res.json({ content });
 });
 api.post("/contact", async (req, res) => {
@@ -252,18 +228,23 @@ api.post("/contact", async (req, res) => {
 });
 api.use(auth);
 api.get("/learning", async (req, res) => {
-  const user = (req as any).user,
-    ctx = await accessContext(user);
-  const allowed = new Set(
-    ctx.nodes
-      .filter((n: any) => canViewContent(ctx, n.id))
-      .map((n: any) => n.id),
-  );
-  const content = ctx.nodes
-    .filter((n: any) => allowed.has(n.id))
-    .map(publicContent);
-  const assetRows = await query(
-    `SELECT a.content_id,u.id,u.filename,u.mime,u.size,u.created_at,a.asset_type,a.sort_order,'asset' AS route_type
+  const user = (req as any).user;
+  // The database pool bounds concurrency; these reads do not depend on each other.
+  const [
+    ctx,
+    assetRows,
+    progressRows,
+    announcements,
+    events,
+    settings,
+    assignments,
+    allAttendanceRecords,
+    attendanceMemberships,
+    attendanceSessionRows,
+  ] = await Promise.all([
+    accessContext(user),
+    query(
+      `SELECT a.content_id,u.id,u.filename,u.mime,u.size,u.created_at,a.asset_type,a.sort_order,'asset' AS route_type
      FROM content_assets a JOIN uploads u ON u.id=a.upload_id AND u.state='ready'
      UNION ALL
      SELECT c.id AS content_id,u.id,u.filename,u.mime,u.size,u.created_at,'video' AS asset_type,-1 AS sort_order,'video' AS route_type
@@ -274,7 +255,39 @@ api.get("/learning", async (req, res) => {
      FROM content c JOIN uploads u ON u.storage_key=c.resource_key AND u.state='ready'
      WHERE c.resource_key<>''
      ORDER BY content_id,asset_type DESC,sort_order`,
+    ),
+    query("SELECT * FROM progress WHERE user_id=?", [user.id]),
+    query(
+      "SELECT a.*, CASE WHEN r.id IS NULL THEN 0 ELSE 1 END AS read FROM announcements a LEFT JOIN notification_reads r ON r.announcement_id=a.id AND r.user_id=? ORDER BY a.created_at DESC LIMIT 100",
+      [user.id],
+    ),
+    query(
+      "SELECT seconds,created_at FROM watch_events WHERE user_id=? AND created_at>? ORDER BY created_at",
+      [user.id, now() - 31 * 86400000],
+    ),
+    one("SELECT value FROM settings WHERE id='platform'"),
+    query(
+      `SELECT DISTINCT a.* FROM learning_assignments a
+     JOIN assignment_targets t ON t.assignment_id=a.id
+     LEFT JOIN group_members gm ON gm.group_id=t.group_id AND gm.user_id=?
+     WHERE a.status='published' AND (t.user_id=? OR gm.user_id=?)
+     ORDER BY a.due_at`,
+      [user.id, user.id, user.id],
+    ),
+    savedAttendanceRecords(),
+    query("SELECT group_id FROM group_members WHERE user_id=?", [user.id]),
+    savedAttendanceSessions(),
+  ]);
+
+  const allowed = new Set(
+    ctx.nodes
+      .filter((n: any) => canViewContent(ctx, n.id))
+      .map((n: any) => n.id),
   );
+  const content = ctx.nodes
+    .filter((n: any) => allowed.has(n.id))
+    .map(publicContent);
+
   const assetsByContent = new Map<string, any[]>();
   for (const asset of assetRows) {
     if (!allowed.has(asset.content_id)) continue;
@@ -302,37 +315,18 @@ api.get("/learning", async (req, res) => {
       (asset: any) => asset.asset_type === "file",
     ).length;
   }
-  const progress = (
-    await query("SELECT * FROM progress WHERE user_id=?", [user.id])
-  ).filter((p: any) => allowed.has(p.video_id));
-  const announcements = await query(
-    "SELECT a.*, CASE WHEN r.id IS NULL THEN 0 ELSE 1 END AS read FROM announcements a LEFT JOIN notification_reads r ON r.announcement_id=a.id AND r.user_id=? ORDER BY a.created_at DESC LIMIT 100",
-    [user.id],
-  );
-  const events = await query(
-    "SELECT seconds,created_at FROM watch_events WHERE user_id=? AND created_at>? ORDER BY created_at",
-    [user.id, now() - 31 * 86400000],
-  );
-  const settings = await one("SELECT value FROM settings WHERE id='platform'");
-  const assignments = await query(
-    `SELECT DISTINCT a.* FROM learning_assignments a
-     JOIN assignment_targets t ON t.assignment_id=a.id
-     LEFT JOIN group_members gm ON gm.group_id=t.group_id AND gm.user_id=?
-     WHERE a.status='published' AND (t.user_id=? OR gm.user_id=?)
-     ORDER BY a.due_at`,
-    [user.id, user.id, user.id],
-  );
-  const studentAttendanceRecords = (await savedAttendanceRecords()).filter(
+
+  const progress = progressRows.filter((p: any) => allowed.has(p.video_id));
+
+  const studentAttendanceRecords = allAttendanceRecords.filter(
     (record: any) => record.user_id === user.id,
   );
+
   const attendanceGroups = new Set(
-    (
-      await query("SELECT group_id FROM group_members WHERE user_id=?", [
-        user.id,
-      ])
-    ).map((membership: any) => membership.group_id),
+    attendanceMemberships.map((membership: any) => membership.group_id),
   );
-  const attendance = (await savedAttendanceSessions())
+
+  const attendance = attendanceSessionRows
     .filter(
       (session: any) =>
         session.status === "open" &&
@@ -355,16 +349,45 @@ api.get("/learning", async (req, res) => {
           }
         : session;
     });
-  for (const a of assignments) {
-    a.resources = await assignmentResources(a.id);
-    a.submission = await one(
-      "SELECT * FROM assignment_submissions WHERE assignment_id=? AND user_id=?",
-      [a.id, user.id],
-    );
-    if (a.submission) {
-      a.submission.files = await submissionFiles(a.submission.id);
-      a.effective_deadline = assignmentDeadline(a, a.submission);
-    } else a.effective_deadline = Number(a.due_at);
+  if (assignments.length) {
+    const assignmentIds = assignments.map((assignment: any) => assignment.id);
+    const placeholders = assignmentIds.map(() => "?").join(",");
+    const [resources, submissions, files] = await Promise.all([
+      query(
+        `SELECT r.assignment_id,u.id,u.filename,u.mime,u.size FROM assignment_resources r
+         JOIN uploads u ON u.id=r.upload_id AND u.state='ready'
+         WHERE r.assignment_id IN (${placeholders}) ORDER BY u.created_at`,
+        assignmentIds,
+      ),
+      query(
+        `SELECT * FROM assignment_submissions WHERE user_id=? AND assignment_id IN (${placeholders})`,
+        [user.id, ...assignmentIds],
+      ),
+      query(
+        `SELECT f.submission_id,u.id,u.filename,u.mime,u.size FROM submission_files f
+         JOIN uploads u ON u.id=f.upload_id AND u.state='ready'
+         JOIN assignment_submissions s ON s.id=f.submission_id
+         WHERE s.user_id=? AND s.assignment_id IN (${placeholders}) ORDER BY u.created_at`,
+        [user.id, ...assignmentIds],
+      ),
+    ]);
+    for (const assignment of assignments) {
+      assignment.resources = resources
+        .filter((r: any) => r.assignment_id === assignment.id)
+        .map(({ assignment_id, ...resource }: any) => resource);
+      assignment.submission =
+        submissions.find((s: any) => s.assignment_id === assignment.id) || null;
+      if (assignment.submission)
+        assignment.submission.files = files
+          .filter(
+            (file: any) => file.submission_id === assignment.submission.id,
+          )
+          .map(({ submission_id, ...file }: any) => file);
+      assignment.effective_deadline = assignmentDeadline(
+        assignment,
+        assignment.submission,
+      );
+    }
   }
   res.json({
     content,
@@ -731,14 +754,34 @@ api.post("/notifications/read", async (req, res) => {
 });
 api.use("/admin", admin);
 api.get("/admin/overview", async (_req, res) => {
-  const students = await query(
-    "SELECT id,name,email,phone,status,avatar,interests,created_at,last_active FROM users WHERE role='student' ORDER BY created_at DESC",
-  );
-  const rawContent = await query(
-    "SELECT * FROM content ORDER BY created_at DESC",
-  );
-  const assetRows = await query(
-    `SELECT a.content_id,u.id,u.filename,u.mime,u.size,u.created_at,a.asset_type,a.sort_order
+  // The database pool bounds concurrency; these reads do not depend on each other.
+  const [
+    students,
+    rawContent,
+    assetRows,
+    groups,
+    members,
+    studentProfiles,
+    grants,
+    announcements,
+    progress,
+    events,
+    logs,
+    settings,
+    contacts,
+    coursework,
+    assignmentTargets,
+    assignmentResourceRows,
+    submissions,
+    submissionFileRows,
+    savedRecords,
+  ] = await Promise.all([
+    query(
+      "SELECT id,name,email,phone,status,avatar,interests,created_at,last_active FROM users WHERE role='student' ORDER BY created_at DESC",
+    ),
+    query("SELECT * FROM content ORDER BY created_at DESC"),
+    query(
+      `SELECT a.content_id,u.id,u.filename,u.mime,u.size,u.created_at,a.asset_type,a.sort_order
      FROM content_assets a JOIN uploads u ON u.id=a.upload_id AND u.state='ready'
      UNION ALL
      SELECT c.id AS content_id,u.id,u.filename,u.mime,u.size,u.created_at,'video' AS asset_type,-1 AS sort_order
@@ -749,7 +792,37 @@ api.get("/admin/overview", async (_req, res) => {
      FROM content c JOIN uploads u ON u.storage_key=c.resource_key AND u.state='ready'
      WHERE c.resource_key<>''
      ORDER BY content_id,asset_type DESC,sort_order`,
-  );
+    ),
+    query("SELECT * FROM student_groups ORDER BY name"),
+    query("SELECT * FROM group_members"),
+    savedStudentProfiles(),
+    query("SELECT * FROM access_grants"),
+    query("SELECT * FROM announcements ORDER BY created_at DESC"),
+    query("SELECT * FROM progress"),
+    query("SELECT * FROM watch_events WHERE created_at>?", [
+      now() - 31 * 86400000,
+    ]),
+    query("SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 50"),
+    one("SELECT value FROM settings WHERE id='platform'"),
+    query("SELECT * FROM contacts ORDER BY created_at DESC LIMIT 50"),
+    query("SELECT * FROM learning_assignments ORDER BY created_at DESC"),
+    query("SELECT * FROM assignment_targets"),
+    query(
+      `SELECT r.id,r.assignment_id,u.id AS upload_id,u.filename,u.mime,u.size
+     FROM assignment_resources r JOIN uploads u ON u.id=r.upload_id ORDER BY u.created_at`,
+    ),
+    query(
+      `SELECT s.*,u.name AS student_name,u.email AS student_email
+     FROM assignment_submissions s JOIN users u ON u.id=s.user_id
+     ORDER BY s.updated_at DESC`,
+    ),
+    query(
+      `SELECT f.id,f.submission_id,u.id AS upload_id,u.filename,u.mime,u.size
+     FROM submission_files f JOIN uploads u ON u.id=f.upload_id ORDER BY u.created_at`,
+    ),
+    savedAttendanceRecords(),
+  ]);
+
   const assetsByContent = new Map<string, any[]>();
   for (const asset of assetRows) {
     const assets = assetsByContent.get(asset.content_id) || [];
@@ -767,14 +840,14 @@ api.get("/admin/overview", async (_req, res) => {
       assets,
     };
   });
-  const groups = await query("SELECT * FROM student_groups ORDER BY name");
-  const members = await query("SELECT * FROM group_members");
-  const studentProfiles = await savedStudentProfiles();
+
   for (const student of students) {
     const profile = studentProfiles.find(
       (entry: any) => entry.user_id === student.id,
     );
-    const membership = members.find((entry: any) => entry.user_id === student.id);
+    const membership = members.find(
+      (entry: any) => entry.user_id === student.id,
+    );
     const group = groups.find(
       (entry: any) => entry.id === (profile?.group_id || membership?.group_id),
     );
@@ -782,47 +855,18 @@ api.get("/admin/overview", async (_req, res) => {
     student.group_id = group?.id || "";
     student.group_name = group?.name || profile?.group_name || "";
   }
-  const grants = await query("SELECT * FROM access_grants");
-  const announcements = await query(
-    "SELECT * FROM announcements ORDER BY created_at DESC",
-  );
-  const progress = await query("SELECT * FROM progress");
-  const events = await query("SELECT * FROM watch_events WHERE created_at>?", [
-    now() - 31 * 86400000,
-  ]);
-  const logs = await query(
-    "SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 50",
-  );
-  const settings = await one("SELECT value FROM settings WHERE id='platform'");
-  const contacts = await query(
-    "SELECT * FROM contacts ORDER BY created_at DESC LIMIT 50",
-  );
-  const coursework = await query(
-    "SELECT * FROM learning_assignments ORDER BY created_at DESC",
-  );
-  const assignmentTargets = await query("SELECT * FROM assignment_targets");
-  const assignmentResourceRows = await query(
-    `SELECT r.id,r.assignment_id,u.id AS upload_id,u.filename,u.mime,u.size
-     FROM assignment_resources r JOIN uploads u ON u.id=r.upload_id ORDER BY u.created_at`,
-  );
-  const submissions = await query(
-    `SELECT s.*,u.name AS student_name,u.email AS student_email
-     FROM assignment_submissions s JOIN users u ON u.id=s.user_id
-     ORDER BY s.updated_at DESC`,
-  );
-  const submissionFileRows = await query(
-    `SELECT f.id,f.submission_id,u.id AS upload_id,u.filename,u.mime,u.size
-     FROM submission_files f JOIN uploads u ON u.id=f.upload_id ORDER BY u.created_at`,
-  );
+
   for (const s of submissions)
     s.files = submissionFileRows.filter((f: any) => f.submission_id === s.id);
   const attendanceSessions = (await savedAttendanceSessions()).sort(
     (a: any, b: any) => Number(b.created_at) - Number(a.created_at),
   );
-  const savedRecords = await savedAttendanceRecords();
+
   const attendanceRecords = savedRecords
     .map((record: any) => {
-      const student = students.find((entry: any) => entry.id === record.user_id);
+      const student = students.find(
+        (entry: any) => entry.id === record.user_id,
+      );
       return {
         ...record,
         student_name: student?.name || "Removed student",

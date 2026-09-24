@@ -57,22 +57,21 @@ async function twilio(action: string, body: Record<string, string>) {
     );
   return data;
 }
-authRoutes.get("/session", async (req, res) =>
+authRoutes.get("/session", async (req, res) => {
+  const user = (req as any).user;
+  const [owner, settings] = await Promise.all([
+    user?.role === "admin" ? one("SELECT user_id FROM platform_owner WHERE id=1") : null,
+    one("SELECT value FROM settings WHERE id='platform'"),
+  ]);
   res.json({
-    user: (req as any).user ? safeUser((req as any).user) : null,
+    user: user ? safeUser(user) : null,
     csrf: (req as any).session?.csrf,
     demo,
-    isOwner: !!(
-      (req as any).user &&
-      (await one("SELECT user_id FROM platform_owner WHERE id=1"))?.user_id ===
-        (req as any).user.id
-    ),
-    platform: JSON.parse(
-      (await one("SELECT value FROM settings WHERE id='platform'"))?.value ||
-        '{"name":"English Tech"}',
-    ),
-  }),
-);
+    isOwner: !!user && owner?.user_id === user.id,
+    platform: JSON.parse(settings?.value || '{"name":"English Tech"}'),
+  });
+});
+
 authRoutes.post("/otp/send", async (req, res) => {
   const { identifier, purpose } = z
     .object({

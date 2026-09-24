@@ -35,6 +35,7 @@ async function request(
   const data = await r.json().catch(() => null);
   return {
     status: r.status,
+    headers: r.headers,
     data,
     cookie: r.headers.get("set-cookie")?.split(";")[0] || "",
   };
@@ -199,9 +200,20 @@ test("private routes require authentication and teacher role", async () => {
   );
   assert.equal((await request("/storage/media/algebra-1/video")).status, 401);
 });
+test("session responses do not expose joined session secrets", async () => {
+  for (const client of [teacher, student]) {
+    const session = await request("/auth/session", "GET", undefined, client);
+    assert.equal(session.status, 200);
+    assert.ok(session.data.user.id);
+    assert.equal(session.data.csrf, client.csrf);
+    for (const key of ["password_hash", "session_id", "session_csrf", "session_expires_at", "token_hash"])
+      assert.equal(key in session.data.user, false, key);
+  }
+});
 test("guest explore exposes only published content under public subjects", async () => {
   const explore = await request("/explore");
   assert.equal(explore.status, 200);
+  assert.equal(explore.headers.get("cache-control"), "no-store");
   assert.ok(explore.data.content.some((item: any) => item.id === "english"));
   assert.ok(explore.data.content.some((item: any) => item.id === "motion-1"));
   assert.equal(JSON.stringify(explore.data).includes("storage_key"), false);

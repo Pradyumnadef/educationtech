@@ -16,6 +16,12 @@ const Auth = lazy(() => import("./pages/Auth"));
 const Student = lazy(() => import("./pages/Student"));
 const Admin = lazy(() => import("./pages/Admin"));
 const Explore = lazy(() => import("./pages/Explore"));
+// Fetch the requested workspace bundle while the session check is in flight.
+// Authorization still happens in Guard before the workspace mounts.
+if (window.location.pathname.startsWith("/admin"))
+  void import("./pages/Admin").catch(() => {});
+else if (/^\/(app|onboarding)(\/|$)/.test(window.location.pathname))
+  void import("./pages/Student").catch(() => {});
 class ErrorBoundary extends Component<
   { children: React.ReactNode },
   { failed: boolean }

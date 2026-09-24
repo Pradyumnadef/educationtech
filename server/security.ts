@@ -43,12 +43,15 @@ export async function session(req: Request, res: Response, next: NextFunction) {
   try {
     const token = req.cookies?.lumio_session;
     if (token) {
-      const s = await one(
-        "SELECT * FROM sessions WHERE token_hash=? AND expires_at>?",
+      const row = await one(
+        `SELECT u.*,s.id AS session_id,s.csrf AS session_csrf,s.expires_at AS session_expires_at
+         FROM sessions s JOIN users u ON u.id=s.user_id
+         WHERE s.token_hash=? AND s.expires_at>?`,
         [hash(token), now()],
       );
-      if (s) {
-        const u = await one("SELECT * FROM users WHERE id=?", [s.user_id]);
+      if (row) {
+        const { session_id, session_csrf, session_expires_at, ...u } = row;
+        const s = { id: session_id, user_id: u.id, csrf: session_csrf, expires_at: session_expires_at };
         if (u?.status === "active") {
           (req as any).user = u;
           (req as any).session = s;
@@ -137,9 +140,11 @@ export async function throttle(key: string, limit: number, windowMs: number) {
     );
 }
 export async function accessContext(user: any) {
+  const nodes = await query("SELECT * FROM content");
   return {
     user,
-    nodes: await query("SELECT * FROM content"),
+    nodes,
+    nodesById: new Map(nodes.map((node: any) => [node.id, node])),
   };
 }
 export function canAccess(ctx: any, contentId: string) {
@@ -171,7 +176,10 @@ export function canViewContent(ctx: any, contentId: string) {
   if (ctx.user.status !== "active") return false;
   if (ctx.user.role === "admin") return true;
   if (!ctx.user.onboarding) return false;
-  let node = ctx.nodes.find((entry: any) => entry.id === contentId);
+  const findNode = (id: string) => ctx.nodesById
+    ? ctx.nodesById.get(id)
+    : ctx.nodes.find((entry: any) => entry.id === id);
+  let node = findNode(contentId);
   if (!node) return false;
   let subject = node.kind === "subject" ? node : null;
   let depth = 0;
@@ -182,7 +190,7 @@ export function canViewContent(ctx: any, contentId: string) {
     )
       return false;
     if (node.kind === "subject") subject = node;
-    node = ctx.nodes.find((entry: any) => entry.id === node.parent_id);
+    node = findNode(node.parent_id);
   }
   return depth < 64 && !!subject;
 }

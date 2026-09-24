@@ -135,19 +135,24 @@ export default function PdfViewer({
   useEffect(() => {
     let cancelled = false;
     let task: any;
-    const controller = new AbortController();
     setLoading(true);
     setError("");
+    setPdfDocument(null);
+    setPages(0);
+    setPage(1);
+    setZoom(1);
     (async () => {
       try {
         const pdfjs = await import("pdfjs-dist");
+        if (cancelled) return;
         pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-        const response = await fetch(url, {
-          credentials: "include",
-          signal: controller.signal,
+        task = pdfjs.getDocument({
+          url,
+          withCredentials: true,
+          rangeChunkSize: 256 * 1024,
+          disableAutoFetch: true,
+          disableStream: true,
         });
-        if (!response.ok) throw new Error("This PDF could not be opened.");
-        task = pdfjs.getDocument({ data: await response.arrayBuffer() });
         const loaded = await task.promise;
         if (cancelled) return loaded.destroy();
         setPdfDocument(loaded);
@@ -162,8 +167,7 @@ export default function PdfViewer({
     })();
     return () => {
       cancelled = true;
-      controller.abort();
-      task?.destroy?.();
+      void task?.destroy().catch(() => {});
     };
   }, [url]);
 
