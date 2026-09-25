@@ -134,7 +134,7 @@ export default function Student({
   else if (route[0] === "assignments")
     body = <StudentAssignments data={data} refresh={refresh} />;
   else if (route[0] === "attendance")
-    body = <StudentAttendance data={data} refresh={refresh} />;
+    body = <StudentAttendance />;
   else if (route[0] === "videos") body = <LearningMaterials data={data} />;
   else if (route[0] === "subjects")
     body = <Library type="subjects" data={data} />;
@@ -644,14 +644,15 @@ function fileSize(bytes: number) {
 function LearningMaterials({ data }: { data: any }) {
   return <StudentDrive data={data} basePath="/app/videos" />;
 }
-function StudentAttendance({ data, refresh }: { data: any; refresh: () => any }) {
+function StudentAttendance() {
+  const { data, error, loading, refresh } = useData("/attendance");
   const [busy, setBusy] = useState<string | null>(null);
   const [locationState, setLocationState] = useState<
     "idle" | "requesting" | "ready" | "blocked" | "unavailable"
   >("idle");
   const permissionRequested = useRef(false);
   const toast = useToast();
-  const sessions = data.attendance || [];
+  const sessions = error ? [] : data?.attendance || [];
   useEffect(() => {
     let refreshing = false;
     const refreshAttendance = async () => {
@@ -763,6 +764,8 @@ function StudentAttendance({ data, refresh }: { data: any; refresh: () => any })
       setBusy(null);
     }
   };
+  if (error) return <Failure error={error} retry={refresh} />;
+  if (loading && !data) return <Loading />;
   return (
     <>
       <div className="page-heading">

@@ -227,6 +227,29 @@ api.post("/contact", async (req, res) => {
   res.json({ ok: true });
 });
 api.use(auth);
+async function studentAttendance(userId: string) {
+  const [records, memberships, sessions] = await Promise.all([
+    savedAttendanceRecords(),
+    query("SELECT group_id FROM group_members WHERE user_id=?", [userId]),
+    savedAttendanceSessions(),
+  ]);
+  const groups = new Set(memberships.map((entry: any) => entry.group_id));
+  const ownRecords = new Map(records.filter((entry: any) => entry.user_id === userId)
+    .map((entry: any) => [entry.session_id, entry]));
+  const timestamp = now();
+  return sessions.filter((session: any) => session.status === "open" &&
+    Number(session.ends_at) >= timestamp &&
+    (!session.class_section_id || groups.has(session.class_section_id)))
+    .sort((a: any, b: any) => Number(a.starts_at) - Number(b.starts_at))
+    .map((session: any) => {
+      const record = ownRecords.get(session.id) as any;
+      return record ? { ...session, record_id: record.id, checked_at: record.checked_at,
+        distance_m: record.distance_m, accuracy_m: record.accuracy_m } : session;
+    });
+}
+api.get("/attendance", async (req, res) => {
+  res.json({ attendance: await studentAttendance((req as any).user.id) });
+});
 api.get("/learning", async (req, res) => {
   const user = (req as any).user;
   // The database pool bounds concurrency; these reads do not depend on each other.
@@ -238,9 +261,7 @@ api.get("/learning", async (req, res) => {
     events,
     settings,
     assignments,
-    allAttendanceRecords,
-    attendanceMemberships,
-    attendanceSessionRows,
+    attendance,
   ] = await Promise.all([
     accessContext(user),
     query(
@@ -274,9 +295,7 @@ api.get("/learning", async (req, res) => {
      ORDER BY a.due_at`,
       [user.id, user.id, user.id],
     ),
-    savedAttendanceRecords(),
-    query("SELECT group_id FROM group_members WHERE user_id=?", [user.id]),
-    savedAttendanceSessions(),
+    studentAttendance(user.id),
   ]);
 
   const allowed = new Set(
@@ -318,37 +337,6 @@ api.get("/learning", async (req, res) => {
 
   const progress = progressRows.filter((p: any) => allowed.has(p.video_id));
 
-  const studentAttendanceRecords = allAttendanceRecords.filter(
-    (record: any) => record.user_id === user.id,
-  );
-
-  const attendanceGroups = new Set(
-    attendanceMemberships.map((membership: any) => membership.group_id),
-  );
-
-  const attendance = attendanceSessionRows
-    .filter(
-      (session: any) =>
-        session.status === "open" &&
-        Number(session.ends_at) >= now() &&
-        (!session.class_section_id ||
-          attendanceGroups.has(session.class_section_id)),
-    )
-    .sort((a: any, b: any) => Number(a.starts_at) - Number(b.starts_at))
-    .map((session: any) => {
-      const record = studentAttendanceRecords.find(
-        (entry: any) => entry.session_id === session.id,
-      );
-      return record
-        ? {
-            ...session,
-            record_id: record.id,
-            checked_at: record.checked_at,
-            distance_m: record.distance_m,
-            accuracy_m: record.accuracy_m,
-          }
-        : session;
-    });
   if (assignments.length) {
     const assignmentIds = assignments.map((assignment: any) => assignment.id);
     const placeholders = assignmentIds.map(() => "?").join(",");

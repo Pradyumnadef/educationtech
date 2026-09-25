@@ -102,6 +102,14 @@ export default function PdfViewer({
 }) {
   const viewerRef = useRef<HTMLElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollFrame = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (scrollFrame.current !== null)
+        cancelAnimationFrame(scrollFrame.current);
+    },
+    [],
+  );
   const [pdfDocument, setPdfDocument] = useState<any>(null);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(0);
@@ -116,7 +124,9 @@ export default function PdfViewer({
     const updateFullscreen = () =>
       setFullscreen(document.fullscreenElement === viewerRef.current);
     setFullscreenSupported(
-      Boolean(document.fullscreenEnabled && viewerRef.current?.requestFullscreen),
+      Boolean(
+        document.fullscreenEnabled && viewerRef.current?.requestFullscreen,
+      ),
     );
     document.addEventListener("fullscreenchange", updateFullscreen);
     return () =>
@@ -182,23 +192,27 @@ export default function PdfViewer({
       container.scrollTo({ top: target.offsetTop - 16, behavior: "smooth" });
   };
   const trackPage = () => {
-    const container = containerRef.current;
-    if (!container) return;
-    const top = container.getBoundingClientRect().top + 80;
-    let closest = page;
-    let distance = Number.POSITIVE_INFINITY;
-    container
-      .querySelectorAll<HTMLElement>("[data-pdf-page]")
-      .forEach((item) => {
-        const currentDistance = Math.abs(
-          item.getBoundingClientRect().top - top,
-        );
-        if (currentDistance < distance) {
-          distance = currentDistance;
-          closest = Number(item.dataset.pdfPage);
-        }
-      });
-    if (closest !== page) setPage(closest);
+    if (scrollFrame.current !== null) return;
+    scrollFrame.current = requestAnimationFrame(() => {
+      scrollFrame.current = null;
+      const container = containerRef.current;
+      if (!container) return;
+      const top = container.getBoundingClientRect().top + 80;
+      let closest = page;
+      let distance = Number.POSITIVE_INFINITY;
+      container
+        .querySelectorAll<HTMLElement>("[data-pdf-page]")
+        .forEach((item) => {
+          const currentDistance = Math.abs(
+            item.getBoundingClientRect().top - top,
+          );
+          if (currentDistance < distance) {
+            distance = currentDistance;
+            closest = Number(item.dataset.pdfPage);
+          }
+        });
+      setPage((current) => (current === closest ? current : closest));
+    });
   };
   const toggleFullscreen = async () => {
     if (!viewerRef.current || !fullscreenSupported) return;
@@ -263,7 +277,9 @@ export default function PdfViewer({
             className="icon-button pdf-fullscreen-button"
             disabled={!fullscreenSupported}
             onClick={toggleFullscreen}
-            aria-label={fullscreen ? "Exit PDF fullscreen" : "View PDF fullscreen"}
+            aria-label={
+              fullscreen ? "Exit PDF fullscreen" : "View PDF fullscreen"
+            }
             title={fullscreen ? "Exit fullscreen" : "View fullscreen"}
           >
             {fullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}

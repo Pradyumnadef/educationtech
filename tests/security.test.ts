@@ -626,6 +626,10 @@ test("timed assignments enforce targeting, private document uploads, and submiss
   );
   assert.equal(unsafeLink.status, 400);
   const learning = await request("/learning", "GET", undefined, student);
+  const attendanceOnly = await request("/attendance", "GET", undefined, student);
+  assert.equal(attendanceOnly.status, 200);
+  assert.deepEqual(Object.keys(attendanceOnly.data), ["attendance"]);
+  assert.deepEqual(attendanceOnly.data.attendance, learning.data.attendance);
   assert.ok(learning.data.assignments.some((a: any) => a.id === assignmentId));
   assert.equal(
     (await request(`/assignments/${assignmentId}/start`, "POST")).status,
@@ -928,6 +932,9 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
     undefined,
     outsider,
   );
+  assert.equal((await request("/attendance")).status, 401);
+  assert.deepEqual((await request("/attendance", "GET", undefined, outsider)).data.attendance,
+    outsiderLearning.data.attendance);
   assert.equal(
     outsiderLearning.data.attendance.some(
       (session: any) => session.id === sessionId,
@@ -1010,6 +1017,8 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
     200,
   );
   const hiddenAttendance = await request("/learning", "GET", undefined, student);
+  assert.deepEqual((await request("/attendance", "GET", undefined, student)).data.attendance,
+    hiddenAttendance.data.attendance);
   assert.equal(
     hiddenAttendance.data.attendance.some(
       (entry: any) => entry.id === sessionId,
@@ -1028,6 +1037,8 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
     200,
   );
   const reopenedAttendance = await request("/learning", "GET", undefined, student);
+  assert.deepEqual((await request("/attendance", "GET", undefined, student)).data.attendance,
+    reopenedAttendance.data.attendance);
   assert.equal(
     reopenedAttendance.data.attendance.some(
       (entry: any) => entry.id === sessionId,
@@ -1051,6 +1062,8 @@ test("attendance enforces time, GPS radius, accuracy, ownership, and one check-i
   );
   assert.equal(expired.status, 200, JSON.stringify(expired.data));
   const withoutExpired = await request("/learning", "GET", undefined, student);
+  assert.deepEqual((await request("/attendance", "GET", undefined, student)).data.attendance,
+    withoutExpired.data.attendance);
   assert.equal(
     withoutExpired.data.attendance.some(
       (entry: any) => entry.id === expired.data.id,
