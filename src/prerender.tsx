@@ -19,3 +19,7 @@ writeFileSync(
   html.replace('<div id="root"></div>', `<div id="root">${markup}</div>`),
 );
 console.log("Public landing page prerendered for search engines.");
+writeFileSync(
+  "dist/index.html",
+  html.replace('<div id="root"></div>', '<div id="root"><div class="loading" role="status" data-app-boot>Opening English Tech…</div></div>'),
+);

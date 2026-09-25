@@ -653,7 +653,12 @@ function StudentAttendance({ data, refresh }: { data: any; refresh: () => any })
   const toast = useToast();
   const sessions = data.attendance || [];
   useEffect(() => {
-    const refreshAttendance = () => void refresh();
+    let refreshing = false;
+    const refreshAttendance = async () => {
+      if (refreshing || document.visibilityState !== "visible") return;
+      refreshing = true;
+      try { await refresh(); } finally { refreshing = false; }
+    };
     const timer = window.setInterval(refreshAttendance, 4000);
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") refreshAttendance();

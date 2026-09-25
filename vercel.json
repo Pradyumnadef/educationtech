@@ -54,7 +54,14 @@
     },
     {
       "src": "/",
-      "dest": "/landing.html"
+      "has": [{ "type": "cookie", "key": "lumio_session" }],
+      "dest": "/index.html",
+      "headers": { "Cache-Control": "private, no-store", "Vary": "Cookie" }
+    },
+    {
+      "src": "/",
+      "dest": "/landing.html",
+      "headers": { "Cache-Control": "private, no-store", "Vary": "Cookie" }
     },
     {
       "handle": "filesystem"

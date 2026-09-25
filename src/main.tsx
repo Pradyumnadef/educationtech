@@ -9,8 +9,8 @@ import {
 } from "react-router-dom";
 import { AuthProvider, ToastProvider, useAuth, Loading, Failure } from "./lib";
 import { resumePath } from "./session";
-import Landing from "./pages/Landing";
 import "./styles.css";
+const Landing = lazy(() => import("./pages/Landing"));
 const TeacherSetup = lazy(() => import("./pages/TeacherSetup"));
 const Auth = lazy(() => import("./pages/Auth"));
 const Student = lazy(() => import("./pages/Student"));
@@ -67,8 +67,10 @@ function Guard({
   return children;
 }
 function Home() {
-  const { user, loading } = useAuth();
-  if (loading || !user) return <Landing />;
+  const { user, loading, error, refresh } = useAuth();
+  if (loading) return <Loading />;
+  if (error) return <Failure error={error} retry={refresh} />;
+  if (!user) return <Landing />;
   return <Navigate to={resumePath(user)} replace />;
 }
 function GuestOnly({ children }: { children: React.ReactNode }) {

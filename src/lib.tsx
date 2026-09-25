@@ -16,6 +16,7 @@ import {
   BookOpen,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { createSessionRequest } from "./session-request";
 export type Item = {
   id: string;
   kind: string;
@@ -127,6 +128,7 @@ export const patch = (url: string, data: any) =>
   api(url, { method: "PATCH", body: JSON.stringify(data) });
 export const del = (url: string) => api(url, { method: "DELETE" });
 const AuthContext = createContext<any>(null);
+const requestSession = createSessionRequest((signal) => api("/auth/session", { signal }));
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null),
     [loading, setLoading] = useState(true),
@@ -135,8 +137,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [platform, setPlatform] = useState<any>({ name: "English Tech" }),
     [error, setError] = useState("");
   const refresh = useCallback(async () => {
+    setLoading(true);
     try {
-      const d = await api("/auth/session");
+      const d = await requestSession();
       setUser(d.user);
       setDemo(d.demo);
       setIsOwner(!!d.isOwner);

@@ -118,6 +118,26 @@ after(async () => {
       retryDelay: 500,
     });
 });
+test("returning sessions receive the app shell before JavaScript; guests receive the public homepage", async () => {
+  const publicPage = await fetch(origin + "/");
+  const publicHtml = await publicPage.text();
+  assert.equal(publicPage.status, 200);
+  assert.doesNotMatch(publicHtml, /data-app-boot/);
+  assert.match(publicHtml, /<h1/);
+  for (const cookie of [student.cookie, teacher.cookie, "lumio_session=expired-session"]) {
+    const response = await fetch(origin + "/", { headers: { Cookie: cookie } });
+    const html = await response.text();
+    assert.equal(response.status, 200);
+    assert.match(html, /data-app-boot/);
+    assert.doesNotMatch(html, /<h1/);
+    assert.match(response.headers.get("cache-control") || "", /no-store/);
+    assert.match(response.headers.get("vary") || "", /Cookie/i);
+  }
+  const expired = await request("/auth/session", "GET", undefined, {cookie: "lumio_session=expired-session", csrf: ""});
+  assert.equal(expired.status, 200);
+  assert.equal(expired.data.user, null);
+});
+
 test("passwords are salted, hashed, and verified", () => {
   const a = passwordHash("a long password"),
     b = passwordHash("a long password");

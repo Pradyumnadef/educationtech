@@ -120,7 +120,13 @@ app.use((req, res, next) => {
   next();
 });
 if (production || process.env.SERVE_BUILD === "true") {
-  app.get("/", (_req, res) => res.sendFile(path.resolve("dist/landing.html")));
+  app.get("/", (req, res) => {
+    // Cookie presence chooses only the public HTML shell. The API still
+    // validates the session before any private workspace or data is shown.
+    res.setHeader("Cache-Control", "private, no-store");
+    res.vary("Cookie");
+    res.sendFile(path.resolve(req.cookies?.lumio_session ? "dist/index.html" : "dist/landing.html"));
+  });
   app.use(express.static(path.resolve("dist"), { maxAge: "1h", index: false }));
   app.get("/{*path}", (_req, res) =>
     res.sendFile(path.resolve("dist/index.html")),
