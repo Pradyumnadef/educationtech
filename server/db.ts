@@ -4,6 +4,8 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
+import { InFlightReads } from "./in-flight-reads.ts";
+const sharedReads = new InFlightReads();
 // App timestamps are milliseconds and must match SQLite's numeric JSON values.
 pg.types.setTypeParser(20, (value) => {
   const number = Number(value);
@@ -51,6 +53,9 @@ export async function query<T = any>(
   sql: string,
   params: any[] = [],
 ): Promise<T[]> {
+  const write = !/^\s*(SELECT|WITH)\b/i.test(sql);
+  if (write) sharedReads.clear();
+  try {
   if (pool) {
     let n = 0;
     return (
@@ -61,8 +66,18 @@ export async function query<T = any>(
     ).rows;
   }
   return sqlite!.prepare(sql).all(...params) as T[];
+  } finally {
+    if (write) sharedReads.clear();
+  }
+}
+// Opt in only for read-only catalogue queries, never sessions or student state.
+export function sharedQuery<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+  if (!/^\s*SELECT\b/i.test(sql)) throw new Error("Shared queries must be SELECT statements");
+  return sharedReads.read(JSON.stringify([sql, params]), () => query<T>(sql, params));
 }
 export async function run(sql: string, params: any[] = []) {
+  sharedReads.clear();
+  try {
   if (pool) {
     let n = 0;
     await pool.query(
@@ -70,6 +85,7 @@ export async function run(sql: string, params: any[] = []) {
       params,
     );
   } else sqlite!.prepare(sql).run(...params);
+  } finally { sharedReads.clear(); }
 }
 export async function one(sql: string, params: any[] = []) {
   return (await query(sql, params))[0];

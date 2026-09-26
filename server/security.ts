@@ -5,7 +5,7 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import type { Request, Response, NextFunction } from "express";
-import { one, run, insert, id, now, production, query } from "./db.ts";
+import { one, run, insert, id, now, production, query, sharedQuery } from "./db.ts";
 const SESSION_DURATION_MS = 1000 * 60 * 60 * 24 * 400;
 const SESSION_RENEW_WINDOW_MS = 1000 * 60 * 60 * 24 * 30;
 function sessionCookie(res: Response, token: string) {
@@ -140,7 +140,7 @@ export async function throttle(key: string, limit: number, windowMs: number) {
     );
 }
 export async function accessContext(user: any) {
-  const nodes = await query("SELECT * FROM content");
+  const nodes = await sharedQuery("SELECT * FROM content");
   return {
     user,
     nodes,

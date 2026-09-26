@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { query, one, run, insert, update, id, now } from "./db.ts";
+import { query, sharedQuery, one, run, insert, update, id, now } from "./db.ts";
 import {
   auth,
   admin,
@@ -44,7 +44,7 @@ function distanceMetres(
   return 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 async function savedAttendanceSessions() {
-  const rows = await query(
+  const rows = await sharedQuery(
     "SELECT value FROM settings WHERE id LIKE 'attendance-session:%'",
   );
   return rows.map((row: any) => JSON.parse(row.value));
@@ -229,18 +229,25 @@ api.post("/contact", async (req, res) => {
 });
 api.use(auth);
 async function studentAttendance(userId: string) {
-  const [records, memberships, sessions] = await Promise.all([
-    savedAttendanceRecords(),
+  const [memberships, sessions] = await Promise.all([
     query("SELECT group_id FROM group_members WHERE user_id=?", [userId]),
     savedAttendanceSessions(),
   ]);
   const groups = new Set(memberships.map((entry: any) => entry.group_id));
-  const ownRecords = new Map(records.filter((entry: any) => entry.user_id === userId)
-    .map((entry: any) => [entry.session_id, entry]));
   const timestamp = now();
-  return sessions.filter((session: any) => session.status === "open" &&
+  const available = sessions.filter((session: any) => session.status === "open" &&
     Number(session.ends_at) >= timestamp &&
-    (!session.class_section_id || groups.has(session.class_section_id)))
+    (!session.class_section_id || groups.has(session.class_section_id)));
+  if (!available.length) return [];
+  const keys = available.map((session: any) => `attendance-record:${session.id}:${userId}`);
+  const records = await query(
+    `SELECT value FROM settings WHERE id IN (${keys.map(() => "?").join(",")})`, keys,
+  );
+  const ownRecords = new Map(records.map((row: any) => {
+    const record = JSON.parse(row.value);
+    return [record.session_id, record];
+  }));
+  return available
     .sort((a: any, b: any) => Number(a.starts_at) - Number(b.starts_at))
     .map((session: any) => {
       const record = ownRecords.get(session.id) as any;
@@ -265,7 +272,7 @@ api.get("/learning", async (req, res) => {
     attendance,
   ] = await Promise.all([
     accessContext(user),
-    query(
+    sharedQuery(
       `SELECT a.content_id,u.id,u.filename,u.mime,u.size,u.created_at,a.asset_type,a.sort_order,'asset' AS route_type
      FROM content_assets a JOIN uploads u ON u.id=a.upload_id AND u.state='ready'
      UNION ALL

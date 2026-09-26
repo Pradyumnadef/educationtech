@@ -15,12 +15,12 @@ let output = "";
 type Client = { cookie: string; csrf: string };
 const guest: Client = { cookie: "", csrf: "" };
 let teacher: Client, student: Client;
-test("100 existing students sign in and use learning, attendance, search, progress and PDF ranges", async () => {
+test("200 existing students use learning, attendance, search, progress and PDF ranges; 100 sign in again", async () => {
   const database = new DatabaseSync(path.join(dir, "lumio.sqlite"));
   const timestamp = Date.now();
   const clients: Client[] = [];
   try {
-    for (let index = 0; index < 100; index++) {
+    for (let index = 0; index < 200; index++) {
       const userId = `classroom-${index}`;
       const token = `classroom-test-token-${index}`;
       database.prepare("INSERT INTO users(id,role,name,email,onboarding,created_at,updated_at) VALUES (?,'student',?,?,1,?,?)")
@@ -38,7 +38,7 @@ test("100 existing students sign in and use learning, attendance, search, progre
     database.prepare("INSERT INTO uploads(id,owner_id,storage_key,filename,mime,size,state,created_at) VALUES ('classroom-upload','classroom-0','local/classroom-upload','classroom.pdf','application/pdf',?,'ready',?)").run(bytes.length,timestamp);
     database.prepare("INSERT INTO content_assets(id,content_id,upload_id,asset_type) VALUES ('classroom-asset','classroom-file','classroom-upload','file')").run();
   } finally { database.close(); }
-  await Promise.all(clients.map(async (_client, index) => {
+  await Promise.all(clients.slice(0,100).map(async (_client, index) => {
     for (const endpoint of ["/auth/session", "/auth/setup", "/auth/options"])
       assert.equal((await request(endpoint)).status,200, `Sign-in page: ${endpoint}`);
     const send = await request("/auth/otp/send", "POST", {identifier:`classroom-${index}@test.local`,purpose:"login"});
@@ -84,9 +84,9 @@ test("100 existing students sign in and use learning, attendance, search, progre
   }));
   assert.ok(statuses.every(result => result.slice(0,9).every(status => status === 200) &&
     result.slice(9).every(status => status === 206)), JSON.stringify(statuses));
-  console.log(`Classroom load: 100 accounts, 500 sign-in page/OTP requests + ${statuses.flat().length} workspace requests; workspace completed in ${Date.now()-started}ms (isolated SQLite fixture, local OTP)`);
+  console.log(`Classroom load: ${clients.length} accounts, 500 sign-in page/OTP requests + ${statuses.flat().length} workspace requests; workspace completed in ${Date.now()-started}ms (isolated SQLite fixture, local OTP)`);
   const analysis = await request("/admin/overview","GET",undefined,teacher);
-  assert.equal(analysis.data.attendance.find((entry:any)=>entry.id===session.data.id).records.length,100);
+  assert.equal(analysis.data.attendance.find((entry:any)=>entry.id===session.data.id).records.length,clients.length);
   assert.equal((await request(`/admin/attendance/${session.data.id}`,"PATCH",{status:"closed"},teacher)).status,200);
   await Promise.all(clients.map(async client => {
     const attendance = await request("/attendance","GET",undefined,client);
