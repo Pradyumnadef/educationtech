@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
-import { rateLimit } from "express-rate-limit";
+import { classroomLimiter } from "./request-limits.ts";
 import { z } from "zod";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
@@ -77,20 +77,11 @@ app.use(
 );
 app.use(express.json({ limit: "350kb" }));
 app.use(cookieParser());
-app.use(
-  "/api",
-  rateLimit({
-    windowMs: 60000,
-    limit: 300,
-    standardHeaders: "draft-8",
-    legacyHeaders: false,
-    message: { error: "Too many requests. Please try again in a moment." },
-  }),
-);
 app.use("/api", session, csrf, (_req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
   next();
 });
+app.use("/api", classroomLimiter());
 app.get("/api/health", (_req, res) => res.json({ ok: true, demo }));
 app.use("/api", teacherRoutes);
 app.use("/api/auth", authRoutes);

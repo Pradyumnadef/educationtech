@@ -1,7 +1,9 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { canAccess, passwordHash, passwordCheck } from "../server/security.ts";
 // A separate server and database make destructive regression tests safe to repeat.
@@ -13,6 +15,56 @@ let output = "";
 type Client = { cookie: string; csrf: string };
 const guest: Client = { cookie: "", csrf: "" };
 let teacher: Client, student: Client;
+test("40 students share a network while loading learning, attendance and PDF ranges", async () => {
+  const database = new DatabaseSync(path.join(dir, "lumio.sqlite"));
+  const timestamp = Date.now();
+  const clients: Client[] = [];
+  try {
+    for (let index = 0; index < 40; index++) {
+      const userId = `classroom-${index}`;
+      const token = `classroom-test-token-${index}`;
+      database.prepare("INSERT INTO users(id,role,name,email,onboarding,created_at,updated_at) VALUES (?,'student',?,?,1,?,?)")
+        .run(userId, userId, `${userId}@test.local`, timestamp, timestamp);
+      database.prepare("INSERT INTO sessions(id,user_id,token_hash,csrf,expires_at) VALUES (?,?,?,?,?)")
+        .run(userId, userId, createHash("sha256").update(token).digest("hex"), "test-csrf", timestamp + 3600000);
+      clients.push({cookie: `lumio_session=${token}`, csrf: "test-csrf"});
+    }
+    database.prepare("INSERT INTO content(id,kind,name,status,created_at,updated_at) VALUES ('classroom-subject','subject','Classroom','published',?,?)").run(timestamp,timestamp);
+    database.prepare("INSERT INTO content(id,parent_id,kind,name,status,created_at,updated_at) VALUES ('classroom-file','classroom-subject','video','PDF','published',?,?)").run(timestamp,timestamp);
+    const bytes = Buffer.from("%PDF-1.4 classroom range verification " + "a".repeat(4096));
+    mkdirSync(path.join(dir, "media"), {recursive:true});
+    writeFileSync(path.join(dir, "media", "classroom-upload"), bytes);
+    database.prepare("INSERT INTO uploads(id,owner_id,storage_key,filename,mime,size,state,created_at) VALUES ('classroom-upload','classroom-0','local/classroom-upload','classroom.pdf','application/pdf',?,'ready',?)").run(bytes.length,timestamp);
+    database.prepare("INSERT INTO content_assets(id,content_id,upload_id,asset_type) VALUES ('classroom-asset','classroom-file','classroom-upload','file')").run();
+  } finally { database.close(); }
+  const started = Date.now();
+  const statuses = await Promise.all(clients.map(async client => {
+    const results = [];
+    for (const endpoint of ["/auth/session", "/learning", "/attendance"]) {
+      const response = await request(endpoint, "GET", undefined, client);
+      results.push(response.status);
+    }
+    for (let part = 0; part < 8; part++) {
+      const response = await fetch(origin + "/api/storage/media/classroom-file/asset/classroom-upload", {
+        headers: {Cookie:client.cookie, Range:`bytes=${part * 256}-${part * 256 + 255}`},
+      });
+      assert.equal((await response.arrayBuffer()).byteLength, 256);
+      results.push(response.status);
+    }
+    return results;
+  }));
+  assert.ok(statuses.every(result => result.slice(0,3).every(status => status === 200) &&
+    result.slice(3).every(status => status === 206)), JSON.stringify(statuses));
+  console.log(`Classroom load: 40 accounts, 440 requests completed in ${Date.now()-started}ms (isolated SQLite fixture)`);
+  const changes = new DatabaseSync(path.join(dir, "lumio.sqlite"));
+  try {
+    changes.prepare("UPDATE content SET status='draft' WHERE id='classroom-subject'").run();
+    const hidden = await request("/storage/media/classroom-file/asset/classroom-upload", "GET", undefined, clients[0]);
+    assert.equal(hidden.status, 403, "Draft ancestors must deny subsequent PDF requests");
+    changes.prepare("UPDATE users SET status='inactive' WHERE id='classroom-0'").run();
+    assert.equal((await request("/attendance", "GET", undefined, clients[0])).status, 401);
+  } finally { changes.close(); }
+});
 async function request(
   url: string,
   method = "GET",

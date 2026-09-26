@@ -23,7 +23,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { z } from "zod";
 import { one, run, insert, id, now, dataDir, production } from "./db.ts";
-import { auth, admin, accessContext, canViewContent, hash } from "./security.ts";
+import { auth, admin, mediaAccessContext, canViewContent, hash } from "./security.ts";
 import { promoteUpload } from "./promote-upload.ts";
 import { isPublicContent } from "./public-content.ts";
 export const storageRoutes = Router();
@@ -536,7 +536,7 @@ storageRoutes.get(
 // Every byte-range request checks the current session and publication state. The private object URL never leaves the server.
 storageRoutes.get("/media/:id/:type", auth, async (req, res) => {
   const user = (req as any).user;
-  const ctx = await accessContext(user);
+  const ctx = await mediaAccessContext(user, String(req.params.id));
   const video = ctx.nodes.find((n: any) => n.id === req.params.id);
   if (!video || !canViewContent(ctx, video.id))
     return res
@@ -574,7 +574,10 @@ storageRoutes.get("/media/:id/:type", auth, async (req, res) => {
     return res.status(415).json({
       error: "This document cannot be previewed securely in your browser.",
     });
+  let checking = false;
   const check = setInterval(async () => {
+    if (checking || res.destroyed || res.writableEnded) return;
+    checking = true;
     try {
       const user = await one(
         "SELECT * FROM users WHERE id=? AND status='active'",
@@ -584,10 +587,12 @@ storageRoutes.get("/media/:id/:type", auth, async (req, res) => {
         "SELECT id FROM sessions WHERE id=? AND expires_at>?",
         [(req as any).session.id, now()],
       );
-      if (!user || !live || !canViewContent(await accessContext(user), video.id))
+      if (!user || !live || !canViewContent(await mediaAccessContext(user, video.id), video.id))
         res.destroy();
     } catch {
       res.destroy();
+    } finally {
+      checking = false;
     }
   }, 2000);
   res.on("close", () => clearInterval(check));
@@ -596,7 +601,7 @@ storageRoutes.get("/media/:id/:type", auth, async (req, res) => {
 });
 storageRoutes.get("/media/:id/asset/:uploadId", auth, async (req, res) => {
   const user = (req as any).user;
-  const ctx = await accessContext(user);
+  const ctx = await mediaAccessContext(user, String(req.params.id));
   const content = ctx.nodes.find((node: any) => node.id === req.params.id);
   if (!content || !canViewContent(ctx, content.id))
     return res
@@ -612,7 +617,10 @@ storageRoutes.get("/media/:id/asset/:uploadId", auth, async (req, res) => {
     return res
       .status(403)
       .json({ error: "Downloads are not available in the student workspace." });
+  let checking = false;
   const check = setInterval(async () => {
+    if (checking || res.destroyed || res.writableEnded) return;
+    checking = true;
     try {
       const user = await one(
         "SELECT * FROM users WHERE id=? AND status='active'",
@@ -622,10 +630,12 @@ storageRoutes.get("/media/:id/asset/:uploadId", auth, async (req, res) => {
         "SELECT id FROM sessions WHERE id=? AND expires_at>?",
         [(req as any).session.id, now()],
       );
-      if (!user || !live || !canViewContent(await accessContext(user), content.id))
+      if (!user || !live || !canViewContent(await mediaAccessContext(user, content.id), content.id))
         res.destroy();
     } catch {
       res.destroy();
+    } finally {
+      checking = false;
     }
   }, 2000);
   res.on("close", () => clearInterval(check));

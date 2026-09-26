@@ -147,6 +147,18 @@ export async function accessContext(user: any) {
     nodesById: new Map(nodes.map((node: any) => [node.id, node])),
   };
 }
+export async function mediaAccessContext(user: any, contentId: string) {
+  const nodes = await query(
+    `WITH RECURSIVE ancestors AS (
+      SELECT c.*,0 AS depth FROM content c WHERE c.id=?
+      UNION ALL
+      SELECT c.*,a.depth+1 AS depth FROM content c
+      JOIN ancestors a ON c.id=a.parent_id WHERE a.depth<63
+    ) SELECT * FROM ancestors`,
+    [contentId],
+  );
+  return { user, nodes, nodesById: new Map(nodes.map((node: any) => [node.id, node])) };
+}
 export function canAccess(ctx: any, contentId: string) {
   if (ctx.user.status !== "active") return false;
   if (ctx.user.role === "admin") return true;
