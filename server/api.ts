@@ -6,6 +6,7 @@ import {
   admin,
   safeUser,
   accessContext,
+  mediaAccessContext,
   canViewContent,
   publicContent,
   audit,
@@ -579,7 +580,7 @@ api.get("/search", async (req, res) => {
   res.json(found);
 });
 api.get("/videos/:id", async (req, res) => {
-  const ctx = await accessContext((req as any).user);
+  const ctx = await mediaAccessContext((req as any).user, String(req.params.id));
   if (!canViewContent(ctx, req.params.id as string))
     bad("This content is not available.", 403);
   const node = ctx.nodes.find((n: any) => n.id === req.params.id);
@@ -625,7 +626,7 @@ api.post("/progress/:id", async (req, res) => {
       completed: z.boolean().default(false),
     })
     .parse(req.body);
-  const ctx = await accessContext((req as any).user);
+  const ctx = await mediaAccessContext((req as any).user, String(req.params.id));
   if (!canViewContent(ctx, req.params.id as string))
     bad("This lesson is not available.", 403);
   const node = ctx.nodes.find((n: any) => n.id === req.params.id);

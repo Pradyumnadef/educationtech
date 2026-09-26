@@ -81,7 +81,9 @@ authRoutes.post("/otp/send", async (req, res) => {
     .parse(req.body);
   if (["email", "phone"].includes(purpose) && !(req as any).user)
     return res.status(401).json({ error: "Please sign in." });
-  await throttle(`otp-ip:${req.ip}`, 15, 900000);
+  // A campus NAT can represent an entire class. Account limits below still
+  // bound resends, and verification retains the five-attempt challenge limit.
+  await throttle(`otp-ip:${req.ip}`, 150, 900000);
   await throttle(`otp:${identifier}`, 5, 900000);
   const recent = await one(
     "SELECT * FROM otps WHERE identifier=? ORDER BY created_at DESC LIMIT 1",
@@ -129,7 +131,7 @@ authRoutes.post("/otp/verify", async (req, res) => {
       code: otpCodeSchema,
     })
     .parse(req.body);
-  await throttle(`verify:${req.ip}`, 30, 900000);
+  await throttle(`verify:${req.ip}`, 300, 900000);
   const otp = await one(
     "UPDATE otps SET attempts=attempts+1 WHERE id=? AND consumed=0 AND expires_at>? AND attempts<5 RETURNING *",
     [challenge, now()],

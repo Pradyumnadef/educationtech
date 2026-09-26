@@ -15,12 +15,12 @@ let output = "";
 type Client = { cookie: string; csrf: string };
 const guest: Client = { cookie: "", csrf: "" };
 let teacher: Client, student: Client;
-test("40 students share a network while loading learning, attendance and PDF ranges", async () => {
+test("100 existing students sign in and use learning, attendance, search, progress and PDF ranges", async () => {
   const database = new DatabaseSync(path.join(dir, "lumio.sqlite"));
   const timestamp = Date.now();
   const clients: Client[] = [];
   try {
-    for (let index = 0; index < 40; index++) {
+    for (let index = 0; index < 100; index++) {
       const userId = `classroom-${index}`;
       const token = `classroom-test-token-${index}`;
       database.prepare("INSERT INTO users(id,role,name,email,onboarding,created_at,updated_at) VALUES (?,'student',?,?,1,?,?)")
@@ -28,6 +28,7 @@ test("40 students share a network while loading learning, attendance and PDF ran
       database.prepare("INSERT INTO sessions(id,user_id,token_hash,csrf,expires_at) VALUES (?,?,?,?,?)")
         .run(userId, userId, createHash("sha256").update(token).digest("hex"), "test-csrf", timestamp + 3600000);
       clients.push({cookie: `lumio_session=${token}`, csrf: "test-csrf"});
+      database.prepare("INSERT INTO group_members(id,group_id,user_id) VALUES (?,'group-1',?)").run(userId,userId);
     }
     database.prepare("INSERT INTO content(id,kind,name,status,created_at,updated_at) VALUES ('classroom-subject','subject','Classroom','published',?,?)").run(timestamp,timestamp);
     database.prepare("INSERT INTO content(id,parent_id,kind,name,status,created_at,updated_at) VALUES ('classroom-file','classroom-subject','video','PDF','published',?,?)").run(timestamp,timestamp);
@@ -37,13 +38,39 @@ test("40 students share a network while loading learning, attendance and PDF ran
     database.prepare("INSERT INTO uploads(id,owner_id,storage_key,filename,mime,size,state,created_at) VALUES ('classroom-upload','classroom-0','local/classroom-upload','classroom.pdf','application/pdf',?,'ready',?)").run(bytes.length,timestamp);
     database.prepare("INSERT INTO content_assets(id,content_id,upload_id,asset_type) VALUES ('classroom-asset','classroom-file','classroom-upload','file')").run();
   } finally { database.close(); }
+  await Promise.all(clients.map(async (_client, index) => {
+    const send = await request("/auth/otp/send", "POST", {identifier:`classroom-${index}@test.local`,purpose:"login"});
+    assert.equal(send.status, 200, JSON.stringify(send.data));
+    const verified = await request("/auth/otp/verify", "POST", {challenge:send.data.challenge,code:send.data.demoCode});
+    assert.equal(verified.status, 200, JSON.stringify(verified.data));
+    assert.equal(verified.data.user.id, `classroom-${index}`);
+    clients[index] = {cookie:verified.cookie,csrf:verified.data.csrf};
+  }));
+  const session = await request("/admin/attendance", "POST", {
+    title:"Classroom load test",groupId:"group-1",locationName:"Test campus",
+    latitude:20,longitude:85,radiusM:50,startsAt:Date.now()-1000,endsAt:Date.now()+3600000,
+  }, teacher);
+  assert.equal(session.status,200,JSON.stringify(session.data));
   const started = Date.now();
   const statuses = await Promise.all(clients.map(async client => {
     const results = [];
-    for (const endpoint of ["/auth/session", "/learning", "/attendance"]) {
+    for (const endpoint of ["/auth/session", "/learning", "/attendance", "/search?q=Classroom", "/videos/classroom-file"]) {
       const response = await request(endpoint, "GET", undefined, client);
       results.push(response.status);
     }
+    const progress = await request("/progress/classroom-file", "POST", {position:10,seconds:0,completed:true}, client);
+    results.push(progress.status);
+    const saved = await request("/learning", "GET", undefined, client);
+    assert.ok(saved.data.progress.some((entry: any) => entry.video_id === "classroom-file" && entry.completed === 1));
+    results.push(saved.status);
+    const checkedIn = await request(`/attendance/${session.data.id}/check-in`, "POST", {
+      latitude:20,longitude:85,accuracyM:5,
+    }, client);
+    assert.equal(checkedIn.status,200,JSON.stringify(checkedIn.data));
+    results.push(checkedIn.status);
+    const attendance = await request("/attendance","GET",undefined,client);
+    assert.ok(attendance.data.attendance.some((entry:any) => entry.id===session.data.id && entry.record_id===checkedIn.data.id));
+    results.push(attendance.status);
     for (let part = 0; part < 8; part++) {
       const response = await fetch(origin + "/api/storage/media/classroom-file/asset/classroom-upload", {
         headers: {Cookie:client.cookie, Range:`bytes=${part * 256}-${part * 256 + 255}`},
@@ -53,9 +80,17 @@ test("40 students share a network while loading learning, attendance and PDF ran
     }
     return results;
   }));
-  assert.ok(statuses.every(result => result.slice(0,3).every(status => status === 200) &&
-    result.slice(3).every(status => status === 206)), JSON.stringify(statuses));
-  console.log(`Classroom load: 40 accounts, 440 requests completed in ${Date.now()-started}ms (isolated SQLite fixture)`);
+  assert.ok(statuses.every(result => result.slice(0,9).every(status => status === 200) &&
+    result.slice(9).every(status => status === 206)), JSON.stringify(statuses));
+  console.log(`Classroom load: 100 accounts, 200 sign-in requests + ${statuses.flat().length} workspace requests; workspace completed in ${Date.now()-started}ms (isolated SQLite fixture, local OTP)`);
+  const analysis = await request("/admin/overview","GET",undefined,teacher);
+  assert.equal(analysis.data.attendance.find((entry:any)=>entry.id===session.data.id).records.length,100);
+  assert.equal((await request(`/admin/attendance/${session.data.id}`,"PATCH",{status:"closed"},teacher)).status,200);
+  await Promise.all(clients.map(async client => {
+    const attendance = await request("/attendance","GET",undefined,client);
+    assert.equal(attendance.status,200);
+    assert.ok(!attendance.data.attendance.some((entry:any)=>entry.id===session.data.id));
+  }));
   const changes = new DatabaseSync(path.join(dir, "lumio.sqlite"));
   try {
     changes.prepare("UPDATE content SET status='draft' WHERE id='classroom-subject'").run();
