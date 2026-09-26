@@ -37,6 +37,10 @@ test("100 verified accounts on one IP can each load a PDF without sharing a quot
     assert.equal(flood.at(-1), 429);
     assert.equal(await fetchFile("student-100"), 206);
     assert.equal(await fetchFile("unverified"), 206);
+    let anonymousStatus = 0;
+    for (let i = 0; i < 600; i++) anonymousStatus = await fetchFile("unverified");
+    assert.equal(anonymousStatus, 429, "Anonymous traffic must still be bounded");
+    assert.equal(await fetchFile("student-101"), 206);
   } finally {
     server.closeAllConnections();
     await new Promise<void>(resolve => server.close(() => resolve()));

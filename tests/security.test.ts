@@ -39,6 +39,8 @@ test("100 existing students sign in and use learning, attendance, search, progre
     database.prepare("INSERT INTO content_assets(id,content_id,upload_id,asset_type) VALUES ('classroom-asset','classroom-file','classroom-upload','file')").run();
   } finally { database.close(); }
   await Promise.all(clients.map(async (_client, index) => {
+    for (const endpoint of ["/auth/session", "/auth/setup", "/auth/options"])
+      assert.equal((await request(endpoint)).status,200, `Sign-in page: ${endpoint}`);
     const send = await request("/auth/otp/send", "POST", {identifier:`classroom-${index}@test.local`,purpose:"login"});
     assert.equal(send.status, 200, JSON.stringify(send.data));
     const verified = await request("/auth/otp/verify", "POST", {challenge:send.data.challenge,code:send.data.demoCode});
@@ -82,7 +84,7 @@ test("100 existing students sign in and use learning, attendance, search, progre
   }));
   assert.ok(statuses.every(result => result.slice(0,9).every(status => status === 200) &&
     result.slice(9).every(status => status === 206)), JSON.stringify(statuses));
-  console.log(`Classroom load: 100 accounts, 200 sign-in requests + ${statuses.flat().length} workspace requests; workspace completed in ${Date.now()-started}ms (isolated SQLite fixture, local OTP)`);
+  console.log(`Classroom load: 100 accounts, 500 sign-in page/OTP requests + ${statuses.flat().length} workspace requests; workspace completed in ${Date.now()-started}ms (isolated SQLite fixture, local OTP)`);
   const analysis = await request("/admin/overview","GET",undefined,teacher);
   assert.equal(analysis.data.attendance.find((entry:any)=>entry.id===session.data.id).records.length,100);
   assert.equal((await request(`/admin/attendance/${session.data.id}`,"PATCH",{status:"closed"},teacher)).status,200);
