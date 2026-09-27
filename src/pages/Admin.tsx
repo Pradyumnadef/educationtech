@@ -94,9 +94,14 @@ function visibilityStatusClass(item: Pick<Item, "status" | "public">) {
       : "draft";
 }
 export default function Admin() {
-  const { data, error, loading, refresh } = useData("/admin/overview");
   const location = useLocation();
   const route = location.pathname.replace(/^\/admin\/?/, "") || "overview";
+  const attendanceOnly = route === "attendance" || route === "attendance-analysis";
+  return <AdminWorkspace key={attendanceOnly ? "attendance" : "overview"} route={route} attendanceOnly={attendanceOnly} />;
+}
+function AdminWorkspace({ route, attendanceOnly }: { route: string; attendanceOnly: boolean }) {
+  const location = useLocation();
+  const { data, error, loading, refresh } = useData(attendanceOnly ? "/admin/attendance-data" : "/admin/overview");
   let body: React.ReactNode;
   if (loading) body = <Loading />;
   else if (error) body = <Failure error={error} retry={refresh} />;

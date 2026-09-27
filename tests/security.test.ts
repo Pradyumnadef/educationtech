@@ -87,6 +87,17 @@ test("200 existing students use learning, attendance, search, progress and PDF r
   console.log(`Classroom load: ${clients.length} accounts, 500 sign-in page/OTP requests + ${statuses.flat().length} workspace requests; workspace completed in ${Date.now()-started}ms (isolated SQLite fixture, local OTP)`);
   const analysis = await request("/admin/overview","GET",undefined,teacher);
   assert.equal(analysis.data.attendance.find((entry:any)=>entry.id===session.data.id).records.length,clients.length);
+  const attendanceOnly = await request("/admin/attendance-data", "GET", undefined, teacher);
+  assert.equal(attendanceOnly.status, 200);
+  assert.deepEqual(attendanceOnly.data.attendance, analysis.data.attendance);
+  assert.deepEqual(attendanceOnly.data.groups, analysis.data.groups);
+  assert.deepEqual(attendanceOnly.data.members, analysis.data.members);
+  assert.deepEqual(attendanceOnly.data.students.map(({id,name,email,roll_number,group_id,group_name}: any) => ({id,name,email,roll_number,group_id,group_name})),
+    analysis.data.students.map(({id,name,email,roll_number,group_id,group_name}: any) => ({id,name,email,roll_number,group_id,group_name})));
+  assert.equal(attendanceOnly.data.content, undefined, "Attendance must not transfer the content catalogue");
+  assert.equal(attendanceOnly.data.coursework, undefined);
+  assert.equal((await request("/admin/attendance-data", "GET", undefined, clients[0])).status, 403);
+  assert.equal((await request("/admin/attendance-data")).status, 401);
   assert.equal((await request(`/admin/attendance/${session.data.id}`,"PATCH",{status:"closed"},teacher)).status,200);
   await Promise.all(clients.map(async client => {
     const attendance = await request("/attendance","GET",undefined,client);

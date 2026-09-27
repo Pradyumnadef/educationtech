@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -9,53 +9,46 @@ import {
   ZoomOut,
 } from "lucide-react";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { pdfCanvasScale } from "../pdf-layout";
 
 function PdfPage({
   document,
   pageNumber,
   width,
   zoom,
+  visible,
   onError,
 }: {
   document: any;
   pageNumber: number;
   width: number;
   zoom: number;
+  visible: boolean;
   onError: (message: string) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const pageRef = useRef<HTMLDivElement>(null);
   const [rendering, setRendering] = useState(true);
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    const element = pageRef.current;
-    if (!element) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "700px 0px" },
-    );
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
+  const [aspect, setAspect] = useState(Math.SQRT2);
   useEffect(() => {
     if (!visible || !document || !canvasRef.current || !width) return;
     let cancelled = false;
     let renderTask: any;
+    let page: any;
+    const canvas = canvasRef.current;
     (async () => {
       try {
         setRendering(true);
-        const page = await document.getPage(pageNumber);
+        page = await document.getPage(pageNumber);
         if (cancelled) return;
         const natural = page.getViewport({ scale: 1 });
+        setAspect(natural.height / natural.width);
         const fit = Math.max(1, width) / natural.width;
         const viewport = page.getViewport({ scale: fit * zoom });
-        const ratio = Math.min(window.devicePixelRatio || 1, 2);
-        const canvas = canvasRef.current!;
+        const ratio = pdfCanvasScale(
+          viewport.width,
+          viewport.height,
+          window.devicePixelRatio,
+        );
         const context = canvas.getContext("2d");
         if (!context) throw new Error("PDF drawing is not supported.");
         canvas.width = Math.floor(viewport.width * ratio);
@@ -72,22 +65,34 @@ function PdfPage({
         if (!cancelled && reason?.name !== "RenderingCancelledException")
           onError(reason?.message || "A PDF page could not be displayed.");
       } finally {
+        if (cancelled) page?.cleanup();
         if (!cancelled) setRendering(false);
       }
     })();
     return () => {
       cancelled = true;
       renderTask?.cancel?.();
+      // Offscreen pages keep their layout but release their large pixel buffers.
+      canvas.width = 0;
+      canvas.height = 0;
+      page?.cleanup();
     };
   }, [visible, document, pageNumber, width, zoom, onError]);
   return (
-    <div className="pdf-page" data-pdf-page={pageNumber} ref={pageRef}>
-      {(!visible || rendering) && (
+    <div
+      className="pdf-page"
+      data-pdf-page={pageNumber}
+      style={{
+        width: Math.max(1, width) * zoom,
+        minHeight: Math.max(1, width) * zoom * aspect + 28,
+      }}
+    >
+      {visible && rendering && (
         <div className="pdf-page-loading">
           <LoaderCircle size={20} /> Loading page {pageNumber}…
         </div>
       )}
-      <canvas ref={canvasRef} />
+      {visible && <canvas ref={canvasRef} />}
       <span className="pdf-page-number">Page {pageNumber}</span>
     </div>
   );
@@ -112,6 +117,8 @@ export default function PdfViewer({
   );
   const [pdfDocument, setPdfDocument] = useState<any>(null);
   const [page, setPage] = useState(1);
+  const currentPage = useRef(page);
+  currentPage.current = page;
   const [pages, setPages] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [width, setWidth] = useState(0);
@@ -119,6 +126,14 @@ export default function PdfViewer({
   const [error, setError] = useState("");
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenSupported, setFullscreenSupported] = useState(true);
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const target = container?.querySelector<HTMLElement>(
+      `[data-pdf-page="${currentPage.current}"]`,
+    );
+    if (container && target)
+      container.scrollTo({ top: target.offsetTop - 16, behavior: "instant" });
+  }, [width, zoom]);
 
   useEffect(() => {
     const updateFullscreen = () =>
@@ -311,6 +326,7 @@ export default function PdfViewer({
               pageNumber={index + 1}
               width={width}
               zoom={zoom}
+              visible={Math.abs(page - (index + 1)) <= 1}
               onError={setError}
             />
           ))

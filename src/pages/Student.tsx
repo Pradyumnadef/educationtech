@@ -111,10 +111,19 @@ export default function Student({
   onboarding?: boolean;
 }) {
   const { user } = useAuth();
-  const { data, error, loading, refresh } = useData("/learning");
   const location = useLocation();
   if (onboarding) return <Onboarding />;
   if (!user.onboarding) return <Onboarding />;
+  // These pages have their own requests; do not block them on the full catalogue.
+  if (location.pathname.replace(/\/$/, "") === "/app/attendance")
+    return <Shell><StudentAttendance /></Shell>;
+  if (location.pathname.replace(/\/$/, "") === "/app/profile")
+    return <Shell><Profile /></Shell>;
+  return <StudentWorkspace />;
+}
+function StudentWorkspace() {
+  const { data, error, loading, refresh } = useData("/learning");
+  const location = useLocation();
   const route = location.pathname.replace(/^\/app\/?/, "").split("/");
   let body: React.ReactNode;
   if (loading) body = <Loading />;
@@ -127,14 +136,11 @@ export default function Student({
     );
   else if (route[0] === "subjects" && route[1])
     body = <SubjectDetail id={route[1]} data={data} />;
-  else if (route[0] === "profile") body = <Profile />;
   else if (route[0] === "notifications")
     body = <Notifications data={data} refresh={refresh} />;
   else if (route[0] === "progress") body = <Progress data={data} />;
   else if (route[0] === "assignments")
     body = <StudentAssignments data={data} refresh={refresh} />;
-  else if (route[0] === "attendance")
-    body = <StudentAttendance />;
   else if (route[0] === "videos") body = <LearningMaterials data={data} />;
   else if (route[0] === "subjects")
     body = <Library type="subjects" data={data} />;

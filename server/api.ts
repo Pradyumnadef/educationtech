@@ -14,6 +14,7 @@ import {
 } from "./security.ts";
 import { cleanupUploadsIfUnreferenced } from "./storage.ts";
 import { publicContentTree } from "./public-content.ts";
+import { attendanceData } from "./attendance-data.ts";
 export const api = Router();
 const uid = (req: any) => req.user.id;
 const text = z.string().trim().min(1).max(200);
@@ -749,6 +750,17 @@ api.post("/notifications/read", async (req, res) => {
   res.json({ ok: true });
 });
 api.use("/admin", admin);
+api.get("/admin/attendance-data", async (_req, res) => {
+  const [students, profiles, groups, members, sessions, records] = await Promise.all([
+    query("SELECT id,name,email,created_at,status FROM users WHERE role='student' ORDER BY created_at DESC"),
+    savedStudentProfiles(),
+    query("SELECT * FROM student_groups ORDER BY name"),
+    query("SELECT * FROM group_members"),
+    savedAttendanceSessions(),
+    savedAttendanceRecords(),
+  ]);
+  res.json(attendanceData(students, profiles, groups, members, sessions, records));
+});
 api.get("/admin/overview", async (_req, res) => {
   // The database pool bounds concurrency; these reads do not depend on each other.
   const [
@@ -837,42 +849,11 @@ api.get("/admin/overview", async (_req, res) => {
     };
   });
 
-  for (const student of students) {
-    const profile = studentProfiles.find(
-      (entry: any) => entry.user_id === student.id,
-    );
-    const membership = members.find(
-      (entry: any) => entry.user_id === student.id,
-    );
-    const group = groups.find(
-      (entry: any) => entry.id === (profile?.group_id || membership?.group_id),
-    );
-    student.roll_number = profile?.roll_number || "";
-    student.group_id = group?.id || "";
-    student.group_name = group?.name || profile?.group_name || "";
-  }
-
   for (const s of submissions)
     s.files = submissionFileRows.filter((f: any) => f.submission_id === s.id);
-  const attendanceSessions = (await savedAttendanceSessions()).sort(
-    (a: any, b: any) => Number(b.created_at) - Number(a.created_at),
-  );
-
-  const attendanceRecords = savedRecords
-    .map((record: any) => {
-      const student = students.find(
-        (entry: any) => entry.id === record.user_id,
-      );
-      return {
-        ...record,
-        student_name: student?.name || "Removed student",
-        student_email: student?.email || "",
-        student_roll_number: student?.roll_number || "",
-      };
-    })
-    .sort((a: any, b: any) => Number(b.checked_at) - Number(a.checked_at));
+  const attendance = attendanceData(students, studentProfiles, groups, members, await savedAttendanceSessions(), savedRecords);
   res.json({
-    students,
+    ...attendance,
     content,
     groups,
     members,
@@ -890,15 +871,6 @@ api.get("/admin/overview", async (_req, res) => {
           weeklyGoal: 120,
         },
     contacts,
-    attendance: attendanceSessions.map((session: any) => ({
-      ...session,
-      attendance_count: attendanceRecords.filter(
-        (record: any) => record.session_id === session.id,
-      ).length,
-      records: attendanceRecords.filter(
-        (record: any) => record.session_id === session.id,
-      ),
-    })),
     coursework: coursework.map((a: any) => ({
       ...a,
       targets: assignmentTargets.filter((t: any) => t.assignment_id === a.id),
