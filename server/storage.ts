@@ -413,9 +413,13 @@ async function deliverPreview(
     return;
   }
   if (bucket && !key.startsWith("local/")) {
+    const controller = new AbortController();
+    res.once("close", () => controller.abort());
     const out = await s3.send(
       new GetObjectCommand({ Bucket: bucket, Key: key, Range: range }),
+      { abortSignal: controller.signal },
     );
+    if (res.destroyed) { (out.Body as Readable)?.destroy(); return; }
     if (out.ContentRange) {
       res.status(206);
       res.setHeader("Content-Range", out.ContentRange);

@@ -3,6 +3,7 @@ import express from "express";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import { classroomLimiter } from "./request-limits.ts";
+import { performanceLogging } from "./performance.ts";
 import { z } from "zod";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
@@ -75,6 +76,7 @@ app.use(
     crossOriginEmbedderPolicy: false,
   }),
 );
+app.use("/api", performanceLogging);
 app.use(express.json({ limit: "350kb" }));
 app.use(cookieParser());
 app.use("/api", session, csrf, (_req, res, next) => {
@@ -138,6 +140,7 @@ app.use(
     res: express.Response,
     _next: express.NextFunction,
   ) => {
+    if (res.destroyed) return;
     if (res.headersSent) return res.end();
     if (err instanceof z.ZodError)
       return res.status(400).json({

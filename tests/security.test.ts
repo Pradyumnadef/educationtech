@@ -15,12 +15,19 @@ let output = "";
 type Client = { cookie: string; csrf: string };
 const guest: Client = { cookie: "", csrf: "" };
 let teacher: Client, student: Client;
+const classroomSize = Number(process.env.CLASSROOM_SIZE || 200);
+assert.ok(Number.isInteger(classroomSize) && classroomSize >= 100 && classroomSize <= 500);
+const samples: Record<string, number[]> = {};
+const measureLoad = process.env.CLASSROOM_BENCHMARK === "true";
+function sample(name: string, started: number) {
+  if (measureLoad) (samples[name] ||= []).push(performance.now() - started);
+}
 test("200 existing students use learning, attendance, search, progress and PDF ranges; 100 sign in again", async () => {
   const database = new DatabaseSync(path.join(dir, "lumio.sqlite"));
   const timestamp = Date.now();
   const clients: Client[] = [];
   try {
-    for (let index = 0; index < 200; index++) {
+    for (let index = 0; index < classroomSize; index++) {
       const userId = `classroom-${index}`;
       const token = `classroom-test-token-${index}`;
       database.prepare("INSERT INTO users(id,role,name,email,onboarding,created_at,updated_at) VALUES (?,'student',?,?,1,?,?)")
@@ -32,7 +39,7 @@ test("200 existing students use learning, attendance, search, progress and PDF r
     }
     database.prepare("INSERT INTO content(id,kind,name,status,created_at,updated_at) VALUES ('classroom-subject','subject','Classroom','published',?,?)").run(timestamp,timestamp);
     database.prepare("INSERT INTO content(id,parent_id,kind,name,status,created_at,updated_at) VALUES ('classroom-file','classroom-subject','video','PDF','published',?,?)").run(timestamp,timestamp);
-    const bytes = Buffer.from("%PDF-1.4 classroom range verification " + "a".repeat(4096));
+    const bytes = Buffer.from("%PDF-1.4 classroom range verification " + "a".repeat(measureLoad ? 8 * 1024 * 1024 : 4096));
     mkdirSync(path.join(dir, "media"), {recursive:true});
     writeFileSync(path.join(dir, "media", "classroom-upload"), bytes);
     database.prepare("INSERT INTO uploads(id,owner_id,storage_key,filename,mime,size,state,created_at) VALUES ('classroom-upload','classroom-0','local/classroom-upload','classroom.pdf','application/pdf',?,'ready',?)").run(bytes.length,timestamp);
@@ -74,10 +81,14 @@ test("200 existing students use learning, attendance, search, progress and PDF r
     assert.ok(attendance.data.attendance.some((entry:any) => entry.id===session.data.id && entry.record_id===checkedIn.data.id));
     results.push(attendance.status);
     for (let part = 0; part < 8; part++) {
+      const chunkSize = measureLoad ? 256 * 1024 : 256;
+      const rangeStarted = performance.now();
       const response = await fetch(origin + "/api/storage/media/classroom-file/asset/classroom-upload", {
-        headers: {Cookie:client.cookie, Range:`bytes=${part * 256}-${part * 256 + 255}`},
+        signal: AbortSignal.timeout(30000),
+        headers: {Cookie:client.cookie, Range:`bytes=${part * chunkSize}-${(part + 1) * chunkSize - 1}`},
       });
-      assert.equal((await response.arrayBuffer()).byteLength, 256);
+      assert.equal((await response.arrayBuffer()).byteLength, chunkSize);
+      sample("PDF range", rangeStarted);
       results.push(response.status);
     }
     return results;
@@ -85,6 +96,16 @@ test("200 existing students use learning, attendance, search, progress and PDF r
   assert.ok(statuses.every(result => result.slice(0,9).every(status => status === 200) &&
     result.slice(9).every(status => status === 206)), JSON.stringify(statuses));
   console.log(`Classroom load: ${clients.length} accounts, 500 sign-in page/OTP requests + ${statuses.flat().length} workspace requests; workspace completed in ${Date.now()-started}ms (isolated SQLite fixture, local OTP)`);
+  if (measureLoad) {
+    const timings = Object.fromEntries(Object.entries(samples).map(([name, values]) => {
+      values.sort((a,b) => a-b);
+      const percentile = (p: number) => Math.round(values[Math.ceil(values.length * p) - 1]);
+      return [name, {requests:values.length,p50:percentile(.5),p95:percentile(.95),p99:percentile(.99)}];
+    }));
+    const report = {students:classroomSize,environment:"local SQLite; synthetic 8 MB transport fixture; no PDF rendering",timings};
+    writeFileSync(path.resolve(`test-results/load-${classroomSize}.json`), JSON.stringify(report,null,2));
+    console.log(JSON.stringify(report));
+  }
   const analysis = await request("/admin/overview","GET",undefined,teacher);
   assert.equal(analysis.data.attendance.find((entry:any)=>entry.id===session.data.id).records.length,clients.length);
   const attendanceOnly = await request("/admin/attendance-data", "GET", undefined, teacher);
@@ -120,7 +141,9 @@ async function request(
   client = guest,
   headers: Record<string, string> = {},
 ) {
+  const requestStarted = performance.now();
   const r = await fetch(origin + "/api" + url, {
+    signal: AbortSignal.timeout(30000),
     method,
     headers: {
       "Content-Type": "application/json",
@@ -133,6 +156,7 @@ async function request(
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await r.json().catch(() => null);
+  sample(url.replace(/classroom-\d+/g, ":student").replace(/\/attendance\/[^/]+\/check-in/, "/attendance/:session/check-in"), requestStarted);
   return {
     status: r.status,
     headers: r.headers,

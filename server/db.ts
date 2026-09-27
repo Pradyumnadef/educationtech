@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { InFlightReads } from "./in-flight-reads.ts";
+import { recordDatabaseTiming } from "./performance.ts";
 const sharedReads = new InFlightReads();
 // App timestamps are milliseconds and must match SQLite's numeric JSON values.
 pg.types.setTypeParser(20, (value) => {
@@ -41,6 +42,32 @@ const pool = process.env.DATABASE_URL
           : undefined,
     })
   : null;
+if (pool) {
+  // Idle connection errors must not terminate the entire server process.
+  pool.on("error", () => console.error(JSON.stringify({ event: "database_idle_connection_error" })));
+  const endpoint = new URL(process.env.DATABASE_URL!);
+  console.log(JSON.stringify({ event: "database_pool_configuration", max: 5,
+    supabaseTransactionPooler: endpoint.hostname.endsWith(".pooler.supabase.com") && endpoint.port === "6543" }));
+}
+async function postgresQuery(sql: string, params: any[]) {
+  const started = performance.now();
+  let waitMs = 0;
+  let client: pg.PoolClient | undefined;
+  let failure: Error | undefined;
+  try {
+    client = await pool!.connect();
+    waitMs = performance.now() - started;
+    let n = 0;
+    return await client.query(sql.replace(/\?/g, () => `$${++n}`), params);
+  } catch (error) {
+    failure = error instanceof Error ? error : new Error("Database request failed");
+    throw error;
+  } finally {
+    if (!client) waitMs = performance.now() - started;
+    client?.release(failure);
+    recordDatabaseTiming(started, waitMs);
+  }
+}
 const sqlite = pool
   ? null
   : new (await import("node:sqlite")).DatabaseSync(
@@ -57,13 +84,7 @@ export async function query<T = any>(
   if (write) sharedReads.clear();
   try {
   if (pool) {
-    let n = 0;
-    return (
-      await pool.query(
-        sql.replace(/\?/g, () => `$${++n}`),
-        params,
-      )
-    ).rows;
+    return (await postgresQuery(sql, params)).rows;
   }
   return sqlite!.prepare(sql).all(...params) as T[];
   } finally {
@@ -79,11 +100,7 @@ export async function run(sql: string, params: any[] = []) {
   sharedReads.clear();
   try {
   if (pool) {
-    let n = 0;
-    await pool.query(
-      sql.replace(/\?/g, () => `$${++n}`),
-      params,
-    );
+    await postgresQuery(sql, params);
   } else sqlite!.prepare(sql).run(...params);
   } finally { sharedReads.clear(); }
 }

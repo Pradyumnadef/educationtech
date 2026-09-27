@@ -1,5 +1,27 @@
 # Performance verification — 27 September 2026
 
+## Capacity measurements and diagnostics
+
+`npm run test:load` now runs isolated 100 → 200 → 500 student stages and stops on a failed stage. Each stage includes 100 local OTP sign-ins, authenticated learning/search/progress/attendance, teacher record verification, and eight 256 KiB PDF ranges per student from an 8 MiB synthetic transport fixture. Reports are written to ignored `test-results/load-{size}.json` with p50/p95/p99 timings. The fixture is not a renderable PDF; viewer rendering was checked separately below.
+
+All three stages passed on 27 September. Sample p95 response times, in milliseconds:
+
+| Concurrent accounts | Learning | Attendance check-in | 256 KiB PDF range |
+| --- | ---: | ---: | ---: |
+| 100 | 266 | 383 | 343 |
+| 200 | 976 | 944 | 1,635 |
+| 500 | 1,673 | 1,496 | 1,892 |
+
+These are single-run localhost measurements with the generator and server on the same Windows machine. They are not production capacity promises or before/after speed comparisons. Larger payloads exposed increasing latency even though correctness checks passed. No production student records were created or changed by these tests.
+
+API requests now have an `X-Request-Id`. Structured `request_performance` logs record every request taking at least one second, server errors and disconnects, plus a 1% sample of successful fast requests. Fields include total duration, database operation count, accumulated database time and connection-pool wait. Parallel database durations can add up to more than wall-clock request duration. Route templates are logged; request bodies, query strings, cookies, student identifiers, SQL and query parameters are excluded. `PERFORMANCE_LOGS=false` disables this logging. Logs are per invocation in the existing Vercel runtime logs, not a persistent analytics database.
+
+PostgreSQL startup logs report whether the configured endpoint is a Supabase transaction pooler on port 6543, without logging credentials. Idle pool errors no longer crash the process. Failed queries discard their connection, and connections are always released. Cancelling a preview now aborts the pending R2/S3 fetch as well as the response stream.
+
+Live Vercel log inspection found an `/api/learning` request received in Mumbai but executed in Washington (`iad1`): 1.50 s function execution and 2.1 s total response. Supabase is in Mumbai. Fluid Compute is already enabled. The production function region was left unchanged because the previous Mumbai deployment was reverted after availability failures; any regional migration should first be verified on a separate deployment. The live database snapshot showed no blocked-query queue. Cloudflare dashboard currently requires sign-in, so authenticated Worker delivery has not been configured.
+
+The full suite now contains 54 passing tests, including concurrent diagnostic isolation and sensitive-value exclusion. A production-like PostgreSQL/R2 staging run and a sustained real-browser workload are still required before assigning a supported live student count.
+
 ## Changes
 
 - Teacher attendance and analysis use `/api/admin/attendance-data`: six database reads instead of the twenty used by the full overview (both counts exclude authentication). Content, assignments and watch history are no longer transferred for these screens.
