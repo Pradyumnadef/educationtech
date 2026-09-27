@@ -47,6 +47,8 @@ if (pool) {
   pool.on("error", () => console.error(JSON.stringify({ event: "database_idle_connection_error" })));
   const endpoint = new URL(process.env.DATABASE_URL!);
   console.log(JSON.stringify({ event: "database_pool_configuration", max: 5,
+    port: endpoint.port || "5432",
+    endpointType: endpoint.hostname.endsWith(".pooler.supabase.com") ? "supabase-shared-pooler" : endpoint.hostname.endsWith(".supabase.co") ? "supabase-direct-or-dedicated" : "other",
     supabaseTransactionPooler: endpoint.hostname.endsWith(".pooler.supabase.com") && endpoint.port === "6543" }));
 }
 async function postgresQuery(sql: string, params: any[]) {
