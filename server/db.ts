@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { InFlightReads } from "./in-flight-reads.ts";
 import { recordDatabaseTiming } from "./performance.ts";
+import { runtimeDatabaseUrl } from "./database-connection.ts";
 const sharedReads = new InFlightReads();
 // App timestamps are milliseconds and must match SQLite's numeric JSON values.
 pg.types.setTypeParser(20, (value) => {
@@ -25,9 +26,14 @@ export const dataDir = path.resolve(
 mkdirSync(dataDir, { recursive: true });
 if (production && !process.env.DATABASE_URL)
   throw new Error("Production requires DATABASE_URL");
-const pool = process.env.DATABASE_URL
+const connectionString = runtimeDatabaseUrl(
+  process.env.DATABASE_URL,
+  Boolean(process.env.VERCEL),
+  process.env.DATABASE_POOL_MODE,
+);
+const pool = connectionString
   ? new pg.Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString,
       max: 5,
       connectionTimeoutMillis: 10000,
       idleTimeoutMillis: 30000,
@@ -45,7 +51,7 @@ const pool = process.env.DATABASE_URL
 if (pool) {
   // Idle connection errors must not terminate the entire server process.
   pool.on("error", () => console.error(JSON.stringify({ event: "database_idle_connection_error" })));
-  const endpoint = new URL(process.env.DATABASE_URL!);
+  const endpoint = new URL(connectionString!);
   console.log(JSON.stringify({ event: "database_pool_configuration", max: 5,
     port: endpoint.port || "5432",
     endpointType: endpoint.hostname.endsWith(".pooler.supabase.com") ? "supabase-shared-pooler" : endpoint.hostname.endsWith(".supabase.co") ? "supabase-direct-or-dedicated" : "other",
