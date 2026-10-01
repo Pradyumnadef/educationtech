@@ -26,6 +26,7 @@ import { one, run, insert, id, now, dataDir, production } from "./db.ts";
 import { auth, admin, mediaAccessContext, canViewContent, hash } from "./security.ts";
 import { promoteUpload } from "./promote-upload.ts";
 import { isPublicContent } from "./public-content.ts";
+import { parseByteRange } from "./byte-range.ts";
 export const storageRoutes = Router();
 const mediaDir = path.join(dataDir, "media");
 mkdirSync(mediaDir, { recursive: true });
@@ -378,8 +379,18 @@ async function deliverPreview(
     "Content-Disposition",
     `${attachment ? "attachment" : "inline"}; filename="${safeName}"`,
   );
-  const range = req.headers.range;
-  if (range && !/^bytes=\d+-\d*$/.test(range)) return res.sendStatus(416);
+  const localPath = path.join(mediaDir, row.id);
+  const size = bucket && !key.startsWith("local/") ? Number(row.size) : statSync(localPath).size;
+  const selected = parseByteRange(req.headers.range, size);
+  if (selected === null) {
+    res.setHeader("Content-Range", `bytes */${size}`);
+    return res.status(416).end();
+  }
+  const range = selected ? `bytes=${selected.start}-${selected.end}` : undefined;
+  if (size === 0) {
+    res.setHeader("Content-Length", "0");
+    return res.end();
+  }
   if (bucket && process.env.CDN_DOMAIN && !key.startsWith("local/")) {
     const privateKey = Buffer.from(
       process.env.CDN_PRIVATE_KEY_BASE64 || "",
@@ -431,18 +442,9 @@ async function deliverPreview(
     stream.pipe(res);
     return;
   }
-  const localPath = path.join(mediaDir, row.id);
-  const size = statSync(localPath).size;
-  let start = 0;
-  let end = size - 1;
-  if (range) {
-    const parts = range.slice(6).split("-");
-    start = Number(parts[0]);
-    end = parts[1] ? Math.min(Number(parts[1]), size - 1) : size - 1;
-    if (start >= size || start > end) {
-      res.setHeader("Content-Range", `bytes */${size}`);
-      return res.sendStatus(416);
-    }
+  const start = selected?.start ?? 0;
+  const end = selected?.end ?? size - 1;
+  if (selected) {
     res.status(206);
     res.setHeader("Content-Range", `bytes ${start}-${end}/${size}`);
   }

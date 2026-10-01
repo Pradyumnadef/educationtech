@@ -1510,6 +1510,23 @@ test("real private upload supports authorized byte ranges and rejects anonymous 
   assert.equal(r.status, 206);
   assert.equal(r.headers.get("content-range"), "bytes 0-15/64");
   assert.equal((await r.arrayBuffer()).byteLength, 16);
+  for (const [url, client] of [
+    [`/api/storage/preview/${prep.data.id}`, teacher],
+    ["/api/storage/media/motion-4/video", student],
+  ] as const) {
+    for (const range of ["bytes=-8", "bytes=56-", "bytes=56-99999999999999999999"]) {
+      const part = await fetch(origin + url, { headers: { Cookie: client.cookie, Range: range } });
+      assert.equal(part.status, 206, range);
+      assert.equal(part.headers.get("content-range"), "bytes 56-63/64");
+      assert.equal((await part.arrayBuffer()).byteLength, 8);
+    }
+    for (const range of ["bytes=999999999-", "bytes=32-16", "bytes=-0"]) {
+      const invalid = await fetch(origin + url, { headers: { Cookie: client.cookie, Range: range } });
+      assert.equal(invalid.status, 416, range);
+      assert.equal(invalid.headers.get("content-range"), "bytes */64");
+      await invalid.arrayBuffer();
+    }
+  }
   const videoDownload = await fetch(
     origin + "/api/storage/media/motion-4/video?download=1",
     { headers: { Cookie: student.cookie } },
