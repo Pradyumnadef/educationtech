@@ -72,6 +72,7 @@ import {
 } from "../lib";
 import { ActivityChart, Stat, Profile } from "./Student";
 import { createXlsxWorkbook, type XlsxSheet } from "../xlsx";
+import { localDateTime } from "../local-date-time";
 type ContentVisibility = "draft" | "students" | "public";
 function contentVisibility(item: Pick<Item, "status" | "public">): ContentVisibility {
   if (item.status === "draft") return "draft";
@@ -2311,12 +2312,7 @@ function ContentEditor({ item, data, onClose, refresh }: any) {
             type="datetime-local"
             value={
               form.publish_at
-                ? new Date(
-                    Number(form.publish_at) -
-                      new Date().getTimezoneOffset() * 60000,
-                  )
-                    .toISOString()
-                    .slice(0, 16)
+                ? localDateTime(Number(form.publish_at))
                 : ""
             }
             onChange={(e) =>
@@ -2395,12 +2391,6 @@ function Attendance({ data, refresh }: any) {
     locationName: "Synergy Institute of Technology, Bhubaneswar",
     latitude: "20.3473125",
     longitude: "85.8998125",
-  };
-  const localDateTime = (time: number) => {
-    const value = new Date(time);
-    return new Date(value.getTime() - value.getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 16);
   };
   const emptyForm = () => ({
     title: "Class attendance",
@@ -3030,7 +3020,7 @@ function Coursework({ data, refresh }: any) {
     title: "",
     description: "",
     quizUrl: "",
-    dueAt: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 16),
+    dueAt: localDateTime(Date.now() + 7 * 86400000),
     timeLimitMinutes: 0,
     status: "published",
     targetType: "student",
@@ -3235,7 +3225,7 @@ function Coursework({ data, refresh }: any) {
                 <input
                   required
                   type="datetime-local"
-                  min={new Date().toISOString().slice(0, 16)}
+                  min={localDateTime(Date.now())}
                   value={form.dueAt}
                   onChange={(e) => setForm({ ...form, dueAt: e.target.value })}
                 />
